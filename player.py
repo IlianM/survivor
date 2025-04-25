@@ -64,8 +64,8 @@ class Player:
         self.anim_interval = 0.2
         self.direction     = 'down'
         # Décalages verticaux uniquement pour up/down
-        self.offset_up     = 10
-        self.offset_down   = 5
+        self.offset_up     = 20
+        self.offset_down   = 15
 
         # — Stats —
         self.speed   = 200
