@@ -1,4 +1,6 @@
-WIDTH = 900   # largeur de la fenêtre
+# settings.py
+
+WIDTH = 900    # largeur de la fenêtre
 HEIGHT = 900   # hauteur de la fenêtre
 FPS = 60
 

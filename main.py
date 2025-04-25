@@ -2,288 +2,327 @@ import pygame
 import random
 import math
 import sys
+import os
 from settings import *
 from player import Player
 from enemy import Enemy
+from xp_orb import XPOrb
 
-# Classe pour le menu des compétences
-class SkillMenu:
-    def __init__(self, player):
-        self.player = player
-        self.branches = list(player.skill_tree.keys())
-        self.options = []  # tuples (branche, compétence, rect)
-        self.font = pygame.font.Font(None, 28)
-        self.margin = 50
-        self.btn_w = 200
-        self.btn_h = 40
-        self.build_buttons()
+class UpgradeMenu:
+    def __init__(self):
+        self.choices = []
+        self.rects   = []
+        self.font    = pygame.font.Font(None, 28)
+        self.btn_w   = 240
+        self.btn_h   = 120
+        self.margin  = 40
 
-    def build_buttons(self):
-        self.options.clear()
-        start_x = self.margin
-        start_y = self.margin + 80
-        for i, branch in enumerate(self.branches):
-            bx = start_x + i * (self.btn_w + self.margin)
-            for j, skill in enumerate(self.player.skill_tree[branch]):
-                rect = pygame.Rect(bx, start_y + j * (self.btn_h + 10), self.btn_w, self.btn_h)
-                self.options.append((branch, skill, rect))
+    def open(self):
+        self.choices = random.sample(Player.UPGRADE_KEYS, 3)
+        self.rects.clear()
+        total_w = 3 * self.btn_w + 2 * self.margin
+        start_x = (WIDTH - total_w) // 2
+        y = (HEIGHT - self.btn_h) // 2
+        for i in range(3):
+            r = pygame.Rect(
+                start_x + i * (self.btn_w + self.margin),
+                y,
+                self.btn_w,
+                self.btn_h
+            )
+            self.rects.append(r)
 
-    def draw(self, surface):
-        # Overlay semi-transparent
+    def draw(self, surf, alpha=255):
         ov = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        ov.fill((0, 0, 0, 180))
-        surface.blit(ov, (0, 0))
+        ov.fill((0, 0, 0, alpha//2))
+        surf.blit(ov, (0, 0))
+        for key, rect in zip(self.choices, self.rects):
+            info = Player.UPGRADE_INFO[key]
+            if info["type"] == "flat":
+                desc = f"+{info['value']} {info['unit']}"
+            elif info["type"] == "percent":
+                pct = int(info["value"] * 100)
+                desc = f"+{pct}% {info['unit']}"
+            else:  # 'mult'
+                pct = int((info["value"] - 1) * 100)
+                sign = "+" if pct > 0 else ""
+                desc = f"{sign}{pct}% {info['unit']}"
 
-        # Titre
-        title_font = pygame.font.Font(None, 48)
-        title = title_font.render("Skill Tree", True, (255, 255, 255))
-        surface.blit(title, ((WIDTH - title.get_width()) // 2, 20))
-
-        # Points de compétence restants
-        sp_txt = self.font.render(f"Skill Points: {self.player.skill_points}", True, (255, 255, 0))
-        surface.blit(sp_txt, (20, 80))
-
-        # Titres des branches
-        for i, branch in enumerate(self.branches):
-            bx = self.margin + i * (self.btn_w + self.margin)
-            btitle = self.font.render(branch.capitalize(), True, (200, 200, 200))
-            surface.blit(btitle, (bx, self.margin))
-
-        # Boutons de compétence
-        for branch, skill, rect in self.options:
-            unlocked = self.player.skill_tree[branch][skill]
-            if unlocked:
-                clr = (100, 100, 100)
-            elif self.player.skill_points > 0:
-                clr = (0, 200, 0)
-            else:
-                clr = (150, 150, 150)
-            pygame.draw.rect(surface, clr, rect)
-            txt = self.font.render(skill, True, (255, 255, 255))
-            surface.blit(txt, (rect.x + 5, rect.y + 5))
-
+            pygame.draw.rect(surf, (50,50,50), rect)
+            pygame.draw.rect(surf, (200,200,200), rect, 2)
+            title = self.font.render(key, True, (255,255,255))
+            surf.blit(title, (rect.x+10, rect.y+10))
+            text  = self.font.render(desc, True, (200,200,200))
+            surf.blit(text,  (rect.x+10, rect.y+40))
 
 pygame.init()
+pygame.mixer.init()
+BACKGROUND_MUSIC = os.path.join("fx", "background_music.mp3")
+music_volume     = 0.5   # ajuste entre 0.0 et 1.0
+pygame.mixer.music.load(BACKGROUND_MUSIC)
+pygame.mixer.music.set_volume(music_volume)
+pygame.mixer.music.play(-1, fade_ms=2000)
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Death Must Pygame")
 clock = pygame.time.Clock()
 
-# Charger et tuiler le background
 bg_img = pygame.image.load("assets/background.png").convert()
 bg_w, bg_h = bg_img.get_size()
 
-# Police et bouton du menu principal
-font_menu = pygame.font.Font(None, 64)
-start_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 - 25, 200, 50)
+player      = Player(MAP_WIDTH//2, MAP_HEIGHT//2)
+enemy_list  = []
+xp_orbs     = []
+spawn_timer = 0.0
+base_spawn_interval = 3  # seconds
 
-# Entités et timers
-player = Player(MAP_WIDTH // 2, MAP_HEIGHT // 2)
-enemy_list = []
-spawn_timer = 0
-SPAWN_INTERVAL = 0.2
+font_menu    = pygame.font.Font(None, 64)
+start_button = pygame.Rect(WIDTH//2-100, HEIGHT//2-25, 200, 50)
+main_menu    = True
 
-# États des menus
-main_menu = True
-menu_active = False
-menu = SkillMenu(player)
+game_over    = False
+kills        = 0
+survival_time= 0
+start_ticks  = pygame.time.get_ticks()
 
-# Tracking
-start_ticks = pygame.time.get_ticks()
-kills = 0
+upgrade_menu   = UpgradeMenu()
+upgrade_active = False
+upgrade_fade   = 0.0
+fade_in_dur    = 0.5
+fade_out_dur   = 1.0
 
-def draw_tiled_background(surface, cam_x, cam_y):
-    offset_x = -(cam_x % bg_w)
-    offset_y = -(cam_y % bg_h)
-    y = offset_y - bg_h
+def draw_tiled_background(surf, cx, cy):
+    ox = -(cx % bg_w)
+    oy = -(cy % bg_h)
+    y = oy - bg_h
     while y < HEIGHT:
-        x = offset_x - bg_w
+        x = ox - bg_w
         while x < WIDTH:
-            surface.blit(bg_img, (x, y))
+            surf.blit(bg_img, (x, y))
             x += bg_w
         y += bg_h
 
 running = True
-game_over = False
-survival_time = 0
-
 while running:
     dt = clock.tick(FPS) / 1000
 
-    # Gestion des événements
+    # Event handling
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
+
+        # Start game
         if main_menu and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if start_button.collidepoint(event.pos):
-                main_menu = False
-                # réinitialiser timer et kills
+                main_menu   = False
                 start_ticks = pygame.time.get_ticks()
-                kills = 0
-        if not main_menu:
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_k:
-                    menu_active = not menu_active
-                elif event.key == pygame.K_y:
-                    player.auto_attack = not player.auto_attack
-            if menu_active and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                # …
+                kills       = 0
+                game_over   = False
+                enemy_list.clear()
+                xp_orbs.clear()
+                player.__init__(MAP_WIDTH//2, MAP_HEIGHT//2)
 
-                mx, my = event.pos
-                for branch, skill, rect in menu.options:
-                    if rect.collidepoint(mx, my):
-                        if player.spend_skill(branch, skill):
-                            menu.build_buttons()
+        # Toggle Y auto-attack
+        if (event.type == pygame.KEYDOWN and not main_menu
+                and not upgrade_active and not game_over):
+            if event.key == pygame.K_y:
+                player.auto_attack = not player.auto_attack
+            elif event.key == pygame.K_k:
+                upgrade_active = not upgrade_active
+                upgrade_fade   = 0.0 if upgrade_active else fade_out_dur
 
-    # Menu principal
+        # Click in upgrade menu
+        if upgrade_active and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mx, my = event.pos
+            for key, rect in zip(upgrade_menu.choices, upgrade_menu.rects):
+                if rect.collidepoint(mx, my):
+                    player.apply_upgrade(key)
+                    player.new_level = False
+                    upgrade_active   = False
+                    upgrade_fade     = 0.0  # disappear immediately
+                    break
+
+    # Main menu
     if main_menu:
-        screen.fill((0, 0, 0))
-        pygame.draw.rect(screen, (0, 200, 0), start_button)
-        txt = font_menu.render("Start Game", True, (255, 255, 255))
-        screen.blit(txt, (start_button.x + (start_button.w - txt.get_width()) // 2,
-                          start_button.y + (start_button.h - txt.get_height()) // 2))
+        screen.fill((0,0,0))
+        pygame.draw.rect(screen, (0,200,0), start_button)
+        txt = font_menu.render("Start Game", True, (255,255,255))
+        screen.blit(txt, (
+            start_button.x + (200 - txt.get_width())//2,
+            start_button.y + (50  - txt.get_height())//2
+        ))
         pygame.display.flip()
         continue
 
-    # Calcul de la caméra
-    cam_x = max(0, min(player.rect.centerx - WIDTH // 2, MAP_WIDTH - WIDTH))
-    cam_y = max(0, min(player.rect.centery - HEIGHT // 2, MAP_HEIGHT - HEIGHT))
+    # Auto‐open on level up
+    if player.new_level and not upgrade_active:
+        upgrade_menu.open()
+        upgrade_active = True
+        upgrade_fade   = 0.0
 
-    # Mise à jour du jeu si pas en skill menu et pas game over
-    if not menu_active and not game_over:
-        # Mise à jour du joueur
+    # Camera
+    cam_x = max(0, min(player.rect.centerx - WIDTH//2, MAP_WIDTH - WIDTH))
+    cam_y = max(0, min(player.rect.centery - HEIGHT//2, MAP_HEIGHT - HEIGHT))
+
+    # Game update
+    if not upgrade_active and not main_menu and not game_over:
         keys = pygame.key.get_pressed()
         player.update(keys, dt)
 
-
+        # Attacks
         if player.auto_attack and enemy_list:
-            # Trouver l'ennemi le plus proche
-            closest = min(enemy_list,
-                        key=lambda e: math.hypot(
-            e.rect.centerx - player.rect.centerx,
-            e.rect.centery - player.rect.centery))
-            # Viser son centre
-            target_pos = closest.rect.center
-            player.attack(enemy_list, target_pos)
-
-        # Attaque
+            tgt = min(enemy_list, key=lambda e: math.hypot(
+                e.rect.centerx-player.rect.centerx,
+                e.rect.centery-player.rect.centery
+            ))
+            player.attack(enemy_list, tgt.rect.center)
         elif pygame.mouse.get_pressed()[0]:
             mx, my = pygame.mouse.get_pos()
-            virt_mouse = (mx + cam_x, my + cam_y)
-            player.attack(enemy_list, virt_mouse)
+            player.attack(enemy_list, (mx+cam_x, my+cam_y))
 
-        # Spawn d'ennemis
+        # Spawn logic with dynamic elite/rare rates
+        game_time     = (pygame.time.get_ticks() - start_ticks) / 1000
+        elite_chance  = min(0.1, player.level * 0.005)
+        rare_chance   = min(0.3, player.level * 0.015)
+        time_mod      = 1 + game_time / 60
+        level_mod     = max(0.2, 1 - player.level * 0.01)
+        spawn_interval= max(0.05, base_spawn_interval * level_mod / time_mod)
+
         spawn_timer += dt
-        if spawn_timer >= SPAWN_INTERVAL:
-            spawn_timer = 0
-            edge = random.choice(["top", "bottom", "left", "right"])
-            if edge == "top":
-                x, y = random.randint(0, MAP_WIDTH), -30
-            elif edge == "bottom":
-                x, y = random.randint(0, MAP_WIDTH), MAP_HEIGHT + 30
-            elif edge == "left":
-                x, y = -30, random.randint(0, MAP_HEIGHT)
+        if spawn_timer >= spawn_interval:
+            spawn_timer = 0.0
+            margin = 50
+            edge   = random.choice(['top','bottom','left','right'])
+            if edge == 'top':
+                x = random.randint(int(cam_x), int(cam_x+WIDTH));   y = cam_y - margin
+            elif edge == 'bottom':
+                x = random.randint(int(cam_x), int(cam_x+WIDTH));   y = cam_y + HEIGHT + margin
+            elif edge == 'left':
+                x = cam_x - margin;                                y = random.randint(int(cam_y), int(cam_y+HEIGHT))
             else:
-                x, y = MAP_WIDTH + 30, random.randint(0, MAP_HEIGHT)
-            enemy_list.append(Enemy(x, y))
+                x = cam_x + WIDTH + margin;                        y = random.randint(int(cam_y), int(cam_y+HEIGHT))
 
-        # Mise à jour des ennemis & collisions
-# Mise à jour des ennemis & collisions
-        for enemy in enemy_list[:]:
-            enemy.update(player.rect.center, dt)
-            hitbox = player.rect.inflate(-100, -100)
-            if enemy.rect.colliderect(hitbox):
-                player.take_damage(enemy.damage)
-                enemy_list.remove(enemy)
+            r = random.random()
+            if   r < elite_chance:
+                tier = 'elite'
+            elif r < elite_chance + rare_chance:
+                tier = 'rare'
+            else:
+                tier = 'normal'
+
+            enemy_list.append(Enemy(x, y, speed=60, tier=tier, player_level=player.level))
+
+        # 1) Update enemies
+        for e in enemy_list:
+            e.update(player.rect.center, dt)
+
+        # 2) Separation
+        for i in range(len(enemy_list)):
+            e1 = enemy_list[i]
+            for j in range(i+1, len(enemy_list)):
+                e2 = enemy_list[j]
+                dx = e1.rect.centerx - e2.rect.centerx
+                dy = e1.rect.centery   - e2.rect.centery
+                dist = math.hypot(dx, dy)
+                min_dist = (e1.rect.width + e2.rect.width) * 0.5
+                if 0 < dist < min_dist:
+                    overlap = min_dist - dist
+                    nx, ny   = dx / dist, dy / dist
+                    shift_x  = nx * overlap * 0.5
+                    shift_y  = ny * overlap * 0.5
+                    e1.rect.x += shift_x; e1.rect.y += shift_y
+                    e2.rect.x -= shift_x; e2.rect.y -= shift_y
+
+        # 3) Collisions, death & cleanup
+        for e in enemy_list[:]:
+            hb = player.rect.inflate(-100, -100)
+            if e.rect.colliderect(hb):
+                if e.attack_timer <= 0:
+                    player.take_damage(e.damage)
+                    e.attack_timer = e.attack_cooldown
+                    e.pause_timer  = 0.5
                 continue
-            if enemy.hp <= 0:
+            if e.hp <= 0:
                 kills += 1
-                player.gain_xp(enemy.xp_value)
-                enemy_list.remove(enemy)
+                xp_orbs.append(XPOrb(e.rect.centerx, e.rect.centery, e.xp_value))
+                enemy_list.remove(e)
+                continue
+            dx = e.rect.centerx - player.rect.centerx
+            dy = e.rect.centery - player.rect.centery
+            if math.hypot(dx, dy) > max(WIDTH, HEIGHT) * 2:
+                enemy_list.remove(e)
 
-        # Vérifier défaite
+        # XP orbs update & pickup
+        for orb in xp_orbs:
+            orb.update(dt, player.rect.center)
+        for orb in xp_orbs[:]:
+            if orb.rect.colliderect(player.rect):
+                # jouer le son de ramassage
+                orb.pickup_sound.play()
+                player.gain_xp(orb.value)
+                xp_orbs.remove(orb)
+        # Game over?
         if player.hp <= 0:
-            game_over = True
-            survival_time = (pygame.time.get_ticks() - start_ticks) / 1000
+            game_over     = True
+            survival_time = game_time
 
-    # Dessin du monde ou du game over
-    if not game_over:
-        # Dessin du background et des entités
-        draw_tiled_background(screen, cam_x, cam_y)
-        for enemy in enemy_list:
-            ex = enemy.rect.x - cam_x
-            ey = enemy.rect.y - cam_y
-            screen.blit(enemy.image, (ex, ey))
-            # Petite barre de vie des ennemis
-            bw = enemy.rect.width
-            bh = 5
-            bar_x = ex
-            bar_y = ey - bh - 2
-            pygame.draw.rect(screen, (100, 0, 0), (bar_x, bar_y, bw, bh))
-            health_ratio = enemy.hp / enemy.max_hp
-            pygame.draw.rect(screen, (0, 200, 0), (bar_x, bar_y, bw * health_ratio, bh))
+    # Drawing
+    draw_tiled_background(screen, cam_x, cam_y)
+    for orb in xp_orbs: orb.draw(screen, cam_x, cam_y)
+    for e in enemy_list:
+        e.draw(screen, cam_x, cam_y)
+        ex, ey = e.rect.x - cam_x, e.rect.y - cam_y
+        bw, bh = e.rect.width, 5
+        pygame.draw.rect(screen, (100,0,0), (ex, ey-bh-2, bw, bh))
+        pygame.draw.rect(screen, (0,200,0), (ex, ey-bh-2, bw*(e.hp/e.max_hp), bh))
+    player.draw(screen, cam_x, cam_y)
 
-        # Dessin du joueur
-        player.draw(screen, cam_x, cam_y)
+    # HUD
+    abw, abh = 300,20; ax, ay = 20,20
+    pygame.draw.rect(screen, (50,50,50), (ax,ay,abw,abh))
+    pr = max(player.armor,0)/player.max_arm
+    pygame.draw.rect(screen, (0,150,150), (ax,ay,abw*pr,abh))
+    pygame.draw.rect(screen, (255,255,255), (ax,ay,abw,abh),2)
 
-        if player.auto_attack:
-            ico = pygame.font.Font(None, 30).render("⚔ AUTO", True, (255,200,0))
-            screen.blit(ico, (WIDTH-100, 10))
+    hy = ay+abh+5
+    pygame.draw.rect(screen, (100,0,0), (ax,hy,abw,abh))
+    hr = max(player.hp,0)/player.max_hp
+    pygame.draw.rect(screen, (0,200,0), (ax,hy,abw*hr,abh))
+    pygame.draw.rect(screen, (255,255,255), (ax,hy,abw,abh),2)
 
+    xy = hy+abh+5
+    pygame.draw.rect(screen, (80,80,0), (ax,xy,abw,10))
+    xr = player.xp/player.next_level_xp
+    pygame.draw.rect(screen, (200,200,0), (ax,xy,abw*xr,10))
+    pygame.draw.rect(screen, (255,255,255), (ax,xy,abw,10),1)
 
-        # HUD existant (armure, vie, XP, level, skill points)
-        # Barre d’armure
-        armor_bar_w = 300
-        armor_bar_h = 20
-        ax, ay = 20, 20
-        pygame.draw.rect(screen, (50, 50, 50), (ax, ay, armor_bar_w, armor_bar_h))
-        armor_ratio = max(player.armor, 0) / player.max_arm
-        pygame.draw.rect(screen, (0, 150, 150), (ax, ay, armor_bar_w * armor_ratio, armor_bar_h))
-        pygame.draw.rect(screen, (255, 255, 255), (ax, ay, armor_bar_w, armor_bar_h), 2)
+    font = pygame.font.Font(None,24)
+    screen.blit(font.render(f"Level: {player.level}",True,(255,255,255)),(ax,xy+15))
+    screen.blit(font.render(f"SP: {player.skill_points}",True,(255,255,255)),(ax+150,xy+15))
 
-        # Barre de vie
-        hp_bar_h = 20
-        hy = ay + armor_bar_h + 5
-        pygame.draw.rect(screen, (100, 0, 0), (ax, hy, armor_bar_w, hp_bar_h))
-        hp_ratio = max(player.hp, 0) / player.max_hp
-        pygame.draw.rect(screen, (0, 200, 0), (ax, hy, armor_bar_w * hp_ratio, hp_bar_h))
-        pygame.draw.rect(screen, (255, 255, 255), (ax, hy, armor_bar_w, hp_bar_h), 2)
-
-        # Barre d’XP
-        xp_bar_h = 10
-        xy = hy + hp_bar_h + 5
-        pygame.draw.rect(screen, (80, 80, 0), (ax, xy, armor_bar_w, xp_bar_h))
-        xp_ratio = player.xp / player.next_level_xp
-        pygame.draw.rect(screen, (200, 200, 0), (ax, xy, armor_bar_w * xp_ratio, xp_bar_h))
-        pygame.draw.rect(screen, (255, 255, 255), (ax, xy, armor_bar_w, xp_bar_h), 1)
-
-        # Level & Skill Points
-        font = pygame.font.Font(None, 24)
-        txt_level = font.render(f"Level: {player.level}", True, (255, 255, 255))
-        screen.blit(txt_level, (ax, xy + xp_bar_h + 5))
-        txt_sp = font.render(f"Skill Points: {player.skill_points}", True, (255, 255, 255))
-        screen.blit(txt_sp, (ax + 150, xy + xp_bar_h + 5))
-
-        # Affichage du menu de compétences si actif
-        if menu_active:
-            menu.draw(screen)
-
-    else:
-        # Écran Game Over
-        screen.fill((0, 0, 0))
-        f1 = pygame.font.Font(None, 72)
-        f2 = pygame.font.Font(None, 48)
+    # Game Over
+    if game_over:
+        screen.fill((0,0,0))
+        f1 = pygame.font.Font(None,72)
+        f2 = pygame.font.Font(None,48)
         lines = [
             "GAME OVER",
-            f"Survived: {survival_time:.1f} s",
+            f"Survived: {survival_time:.1f}s",
             f"Level:    {player.level}",
-            f"Kills:    {kills}"
+            f"Monster exterminated:    {kills}"
         ]
         for i, text in enumerate(lines):
-            font = f1 if i == 0 else f2
-            surf = font.render(text, True, (255, 255, 255))
-            screen.blit(surf, ((WIDTH - surf.get_width()) // 2, 150 + i * 80))
+            font_ = f1 if i==0 else f2
+            surf  = font_.render(text,True,(255,255,255))
+            screen.blit(surf, ((WIDTH - surf.get_width())//2,150+i*80))
+
+    # Upgrade menu fade
+    if upgrade_active or (not player.new_level and upgrade_fade>0):
+        if upgrade_active:
+            upgrade_fade = min(upgrade_fade + dt, fade_in_dur)
+        else:
+            upgrade_fade = max(upgrade_fade - dt, 0)
+        alpha = int(255 * (upgrade_fade/fade_in_dur))
+        upgrade_menu.draw(screen, alpha)
 
     pygame.display.flip()
-
-pygame.quit()
