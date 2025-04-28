@@ -22,31 +22,31 @@ class Enemy:
         self.rect      = self.image.get_rect(center=(x, y))
 
         # --- HP scaling ---
-        # normal = ×1.0, rare = ×3.0, elite = ×9.0
         if tier == 'elite':
             hp_scale = 9.0
         elif tier == 'rare':
             hp_scale = 3.0
         else:
             hp_scale = 1.0
-
-        base_hp    = 3
+        base_hp    = 5
         self.max_hp = int((base_hp + player_level * 2) * hp_scale)
         self.hp     = self.max_hp
 
-        # Vitesse
-        self.speed  = speed + player_level * 5
+        # --- Vitesse ---
+        self.speed      = speed + player_level * 5
+        self.base_speed = self.speed         # conserve la vitesse normale
+        self.slow_timer = 0.0                # timer pour effet de slow
 
-        # XP et dégâts
+        # --- XP et dégâts ---
         self.xp_value = {'normal': 2, 'rare': 10, 'elite': 15}[tier]
         self.damage   = 1
 
-        # Timers d’attaque
+        # --- Timers d’attaque ---
         self.attack_cooldown = 1.0
         self.attack_timer    = 0.0
         self.pause_timer     = 0.0
 
-        # Teinte pour rare/elite
+        # --- Teinte pour rare/elite ---
         if tier == 'rare':
             self.tint_color = (0, 0, 255, 80)
         elif tier == 'elite':
@@ -54,32 +54,41 @@ class Enemy:
         else:
             self.tint_color = None
 
-        # Flash blanc à la prise de dégât
+        # --- Flash blanc à la prise de dégât ---
         self.flash_duration = 0.2
         self.flash_timer    = 0.0
 
     def update(self, player_pos, dt):
-        # Décrémente les timers
+        # 1) Décrémente timers attaque/pause/flash
         if self.attack_timer > 0:
             self.attack_timer -= dt
         if self.pause_timer > 0:
             self.pause_timer -= dt
             return
-
         if self.flash_timer > 0:
             self.flash_timer -= dt
 
-        # Mouvement vers le joueur
+        # 2) Décrémente slow timer et calcule facteur de vitesse
+        if self.slow_timer > 0:
+            self.slow_timer -= dt
+            factor = 0.5
+        else:
+            factor = 1.0
+
+        # 3) Mouvement vers le joueur
         dx = player_pos[0] - self.rect.centerx
         dy = player_pos[1] - self.rect.centery
         dist = math.hypot(dx, dy)
         if dist > 0:
+            # bascule sprite selon direction
             self.image = self.img_left if dx < 0 else self.img_right
-            nx, ny = dx / dist, dy / dist
-            self.rect.x += nx * self.speed * dt
-            self.rect.y += ny * self.speed * dt
+            nx, ny = dx/dist, dy/dist
+            # applique la vitesse, slow incluse
+            move_speed = self.base_speed * factor
+            self.rect.x += nx * move_speed * dt
+            self.rect.y += ny * move_speed * dt
 
-        # Contrainte aux limites de la map
+        # 4) Clamp aux limites de la map
         self.rect.x = max(0, min(self.rect.x, MAP_WIDTH - self.rect.width))
         self.rect.y = max(0, min(self.rect.y, MAP_HEIGHT - self.rect.height))
 
@@ -88,7 +97,7 @@ class Enemy:
         # Sprite principal
         surface.blit(self.image, pos)
 
-        # Teinte si rare/elite (pixels opaques seulement)
+        # Teinte rare/elite
         if self.tint_color:
             mask = pygame.mask.from_surface(self.image)
             tint_surf = mask.to_surface(
@@ -97,7 +106,7 @@ class Enemy:
             )
             surface.blit(tint_surf, pos)
 
-        # Flash blanc si dégât (pixels opaques seulement)
+        # Flash blanc
         if self.flash_timer > 0:
             mask = pygame.mask.from_surface(self.image)
             flash_surf = mask.to_surface(

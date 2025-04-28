@@ -112,7 +112,7 @@ def main():
     # Timers & compteurs
     spawn_timer         = 0.0
     base_spawn_interval = 3.0
-    mage_spawn_chance   = 1    # 10% des spawns seront des mages
+    mage_spawn_chance   = 0.5    # 10% des spawns seront des mages
     start_ticks         = 0
     kills               = 0
     game_over           = False
@@ -131,10 +131,11 @@ def main():
 
         # Événements
         for event in pygame.event.get():
+            # 1) Quit
             if event.type == pygame.QUIT:
                 running = False
 
-            # Clic sur "Jouer"
+            # 2) Clic gauche “Jouer” dans le menu principal
             if main_menu and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if play_button_rect.collidepoint(event.pos):
                     main_menu   = False
@@ -145,10 +146,11 @@ def main():
                     mages.clear()
                     xp_orbs.clear()
                     player.__init__(MAP_WIDTH // 2, MAP_HEIGHT // 2)
-                continue
+                continue  # on ignore tout le reste tant que le menu est ouvert
 
-            # Toggle auto-attack et menu compétence
+            # 3) En jeu (ni menu principal, ni game over)
             if not main_menu and not game_over:
+                # 3a) Clavier
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_y:
                         player.auto_attack = not player.auto_attack
@@ -156,7 +158,18 @@ def main():
                         upgrade_active = not upgrade_active
                         upgrade_fade   = 0.0 if upgrade_active else fade_out_dur
 
-            # Clic dans le menu d’amélioration
+                # 3b) Souris
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    mx, my = event.pos
+                    # Clic gauche → attaque
+                    if event.button == 1:
+                        player.attack(enemy_list + mages, (mx + cam_x, my + cam_y))
+                    # Clic droit → cri (scream)
+                    elif event.button == 3:
+                        mx, my = event.pos
+                        world_pos = (mx + cam_x, my + cam_y)
+                        player.scream(enemy_list, mages, world_pos)
+            # 4) Clic dans le menu d’amélioration
             if upgrade_active and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mx, my = event.pos
                 for key, rect in zip(upgrade_menu.choices, upgrade_menu.rects):
@@ -255,18 +268,20 @@ def main():
             for m in mages:
                 m.update(player, dt, cam_x, cam_y)
 
-            # 3) Séparation entre gobelins classiques
-            for i in range(len(enemy_list)):
-                e1 = enemy_list[i]
-                for j in range(i + 1, len(enemy_list)):
-                    e2 = enemy_list[j]
+            # 3) Séparation : évite que tous les ennemis (normaux + mages) ne se chevauchent
+            all_enemies = enemy_list + mages
+            for i in range(len(all_enemies)):
+                e1 = all_enemies[i]
+                for j in range(i + 1, len(all_enemies)):
+                    e2 = all_enemies[j]
                     dx = e1.rect.centerx - e2.rect.centerx
                     dy = e1.rect.centery   - e2.rect.centery
                     dist = math.hypot(dx, dy)
                     min_dist = (e1.rect.width + e2.rect.width) * 0.5
                     if 0 < dist < min_dist:
+                        # vecteur unitaire
+                        nx, ny = dx/dist, dy/dist
                         overlap = min_dist - dist
-                        nx, ny  = dx / dist, dy / dist
                         shift_x = nx * overlap * 0.5
                         shift_y = ny * overlap * 0.5
                         e1.rect.x += shift_x
@@ -352,6 +367,19 @@ def main():
 
         # Joueur
         player.draw(screen, cam_x, cam_y)
+
+                # — Indicateur de cooldown du dash —
+        bar_w, bar_h = 40, 5
+        px = player.rect.centerx - cam_x
+        py = player.rect.bottom   - cam_y + 6
+        # fond gris
+        pygame.draw.rect(screen, (50,50,50), (px - bar_w//2, py, bar_w, bar_h))
+        # remplissage proportionnel
+        ratio = 1.0 if player.dash_timer <= 0 else max(0, 1 - player.dash_timer / player.dash_cooldown)
+        pygame.draw.rect(screen, (0,200,200), (px - bar_w//2, py, int(bar_w * ratio), bar_h))
+        # bordure blanche
+        pygame.draw.rect(screen, (255,255,255), (px - bar_w//2, py, bar_w, bar_h), 1)
+
 
         # HUD - bottom center
         abw, abh = 300, 20

@@ -8,162 +8,190 @@ from settings import MAP_WIDTH, MAP_HEIGHT
 class Player:
     def __init__(self, x, y):
         # — Sons —
-        # Assure-toi d'avoir appelé pygame.init() et pygame.mixer.init() avant
-        self.attack_sound  = pygame.mixer.Sound(os.path.join("fx", "attack.mp3"))
-        self.levelup_sound = pygame.mixer.Sound(os.path.join("fx", "levelup.mp3"))
+        self.attack_sound   = pygame.mixer.Sound(os.path.join("fx", "attack.mp3"))
+        self.levelup_sound  = pygame.mixer.Sound(os.path.join("fx", "levelup.mp3"))
+        self.scream_sound   = pygame.mixer.Sound(os.path.join("fx", "eagle_scream.mp3"))
 
         # — Sprites & animation —
-        horz_height = 128   # hauteur pour gauche/droite
-        vert_height =  96   # hauteur pour haut/bas
+        horz_height = 128
+        vert_height = 96
 
-        # Marche droite (3 frames)
+        # droite (3 frames)
         self.walk_frames_right = []
         for i in range(1, 4):
             img = pygame.image.load(f"assets/knight{i}.png").convert_alpha()
             ow, oh = img.get_size()
             scale = horz_height / oh
             nw = int(ow * scale)
-            self.walk_frames_right.append(
-                pygame.transform.scale(img, (nw, horz_height))
-            )
-        # Marche gauche (miroir)
-        self.walk_frames_left = [
-            pygame.transform.flip(f, True, False)
-            for f in self.walk_frames_right
-        ]
+            self.walk_frames_right.append(pygame.transform.scale(img, (nw, horz_height)))
+        self.walk_frames_left = [pygame.transform.flip(f, True, False) for f in self.walk_frames_right]
 
-        # Marche vers le haut (2 frames)
+        # haut (2 frames)
         self.up_frames = []
         for i in range(1, 3):
             img = pygame.image.load(f"assets/knight_up{i}.png").convert_alpha()
             ow, oh = img.get_size()
             scale = vert_height / oh
             nw = int(ow * scale)
-            self.up_frames.append(
-                pygame.transform.scale(img, (nw, vert_height))
-            )
+            self.up_frames.append(pygame.transform.scale(img, (nw, vert_height)))
 
-        # Marche vers le bas (2 frames)
+        # bas (2 frames)
         self.down_frames = []
         for i in range(1, 3):
             img = pygame.image.load(f"assets/knightdown_{i}.png").convert_alpha()
             ow, oh = img.get_size()
             scale = vert_height / oh
             nw = int(ow * scale)
-            self.down_frames.append(
-                pygame.transform.scale(img, (nw, vert_height))
-            )
+            self.down_frames.append(pygame.transform.scale(img, (nw, vert_height)))
 
-        # Image courante et hitbox
+        # image initiale & hitbox
         self.image = self.down_frames[0]
         self.rect  = self.image.get_rect(center=(x, y))
 
-        # Animation
+        # animation
         self.anim_index    = 0
         self.anim_timer    = 0.0
         self.anim_interval = 0.2
         self.direction     = 'down'
-        # Décalages verticaux uniquement pour up/down
         self.offset_up     = 20
         self.offset_down   = 15
 
-        # — Stats —
-        self.speed   = 170
+        # stats
+        self.speed   = 200
         self.max_hp  = 10
         self.hp      = self.max_hp
         self.max_arm = 5
         self.armor   = self.max_arm
 
-        # — Attaque —
+        # attaque
         self.attack_range        = 120
-        self.attack_cooldown     = 1
-        self.attack_timer        = 0.0
+        self.attack_cooldown     = 1.0
         self.attack_angle        = 90
+        self.attack_timer        = 0.0
         self.attack_damage       = 3
         self.attacking           = False
         self.attack_duration     = 0.2
         self.attack_timer_visual = 0.0
         self.last_attack_angle   = 0
 
-        # — Slash visuel —
-        # charge l'image brute orientée sud-ouest
+        # slash visuel
         raw = pygame.image.load(os.path.join("assets", "slash.png")).convert_alpha()
         self.raw_slash   = raw
-        # facteur de réduction (0.0 = invisible, 1.0 = taille d'origine)
         self.slash_scale = 0.15
 
-        # — XP & progression —
+        # XP & progression
         self.xp            = 0
         self.level         = 1
         self.next_level_xp = 20
         self.skill_points  = 0
         self.new_level     = False
+        self.xp_bonus      = 0.0
 
-        # — Auto-attack toggle —
+        # auto‐attack
         self.auto_attack = True
 
+        # dash
+        self.dash_cooldown  = 2.0
+        self.dash_timer     = 0.0
+        self.dash_duration  = 0.2
+        self.dash_time_left = 0.0
+        self.dash_speed     = 800
+        self.dash_dir       = (0, 0)
+
+        # cri
+        self.scream_cooldown      = 10.0
+        self.scream_timer         = 0.0
+        self.scream_damage        = 1
+        self.scream_range         = self.attack_range * 3
+        self.scream_slow_duration = 3.0
+        self.scream_slow_factor   = 0.6
+
+        # affichage du cône
+        self.show_scream_cone   = False
+        self.scream_cone_timer  = 0.0
+        self.scream_angle       = 0.0
+
     def update(self, keys, dt):
-        # — Input & direction & déplacement & animation —
+        # 1) timers attaque, dash, cri
+        self.attack_timer = min(self.attack_timer + dt, self.attack_cooldown)
+        if self.attacking:
+            self.attack_timer_visual -= dt
+            if self.attack_timer_visual <= 0:
+                self.attacking = False
+
+        if self.dash_timer > 0:
+            self.dash_timer -= dt
+        if self.scream_timer > 0:
+            self.scream_timer -= dt
+        if self.show_scream_cone:
+            self.scream_cone_timer -= dt
+            if self.scream_cone_timer <= 0:
+                self.show_scream_cone = False
+
+        # 2) dash en cours
+        if self.dash_time_left > 0:
+            self.dash_time_left -= dt
+            self.rect.x += self.dash_dir[0] * self.dash_speed * dt
+            self.rect.y += self.dash_dir[1] * self.dash_speed * dt
+            self.rect.x = max(0, min(self.rect.x, MAP_WIDTH  - self.rect.width))
+            self.rect.y = max(0, min(self.rect.y, MAP_HEIGHT - self.rect.height))
+            return
+
+        # 3) déplacement
         dx = dy = 0
         if keys[pygame.K_z]: dy -= 1
         if keys[pygame.K_s]: dy += 1
         if keys[pygame.K_q]: dx -= 1
         if keys[pygame.K_d]: dx += 1
-
-        # Détection de la direction principale
-        if dy < 0:   self.direction = 'up'
-        elif dy > 0: self.direction = 'down'
-        elif dx < 0: self.direction = 'left'
-        elif dx > 0: self.direction = 'right'
-
-        # Normalisation pour vitesse constante en diagonale
         if dx or dy:
             length = math.hypot(dx, dy)
             dx /= length; dy /= length
 
-        # Animation frame
+        # 4) dash déclenché
+        if keys[pygame.K_SPACE] and self.dash_timer <= 0:
+            if dx or dy:
+                self.dash_dir = (dx, dy)
+            else:
+                dir_map = {'up':(0,-1),'down':(0,1),'left':(-1,0),'right':(1,0)}
+                self.dash_dir = dir_map[self.direction]
+            self.dash_time_left = self.dash_duration
+            self.dash_timer     = self.dash_cooldown
+            return
+
+        # 5) animation marche
+        if dy < 0:    self.direction = 'up'
+        elif dy > 0:  self.direction = 'down'
+        elif dx < 0:  self.direction = 'left'
+        elif dx > 0:  self.direction = 'right'
+
         moving = (dx or dy)
         if moving:
             self.anim_timer += dt
             if self.anim_timer >= self.anim_interval:
                 self.anim_timer -= self.anim_interval
-                total = max(
-                    len(self.walk_frames_right),
-                    len(self.walk_frames_left),
-                    len(self.up_frames),
-                    len(self.down_frames)
-                )
+                total = max(len(self.walk_frames_right),
+                            len(self.walk_frames_left),
+                            len(self.up_frames),
+                            len(self.down_frames))
                 self.anim_index = (self.anim_index + 1) % total
         else:
             self.anim_index = 0
             self.anim_timer = 0
 
-        # Choix du sprite selon la direction
         if self.direction == 'up':
-            idx = self.anim_index % len(self.up_frames)
-            self.image = self.up_frames[idx]
+            self.image = self.up_frames[self.anim_index % len(self.up_frames)]
         elif self.direction == 'down':
-            idx = self.anim_index % len(self.down_frames)
-            self.image = self.down_frames[idx]
+            self.image = self.down_frames[self.anim_index % len(self.down_frames)]
         elif self.direction == 'left':
-            idx = self.anim_index % len(self.walk_frames_left)
-            self.image = self.walk_frames_left[idx]
-        else:  # right
-            idx = self.anim_index % len(self.walk_frames_right)
-            self.image = self.walk_frames_right[idx]
+            self.image = self.walk_frames_left[self.anim_index % len(self.walk_frames_left)]
+        else:
+            self.image = self.walk_frames_right[self.anim_index % len(self.walk_frames_right)]
 
-        # Déplacement + murs invisibles
+        # 6) déplacement normal
         self.rect.x += dx * self.speed * dt
         self.rect.y += dy * self.speed * dt
         self.rect.x = max(0, min(self.rect.x, MAP_WIDTH  - self.rect.width))
         self.rect.y = max(0, min(self.rect.y, MAP_HEIGHT - self.rect.height))
-
-        # Timers d’attaque
-        self.attack_timer += dt
-        if self.attacking:
-            self.attack_timer_visual -= dt
-            if self.attack_timer_visual <= 0:
-                self.attacking = False
 
     def can_attack(self):
         return self.attack_timer >= self.attack_cooldown
@@ -171,39 +199,64 @@ class Player:
     def attack(self, enemies, mouse_pos):
         if not self.can_attack():
             return
-        # joue le son
         self.attack_sound.play()
-
-        # déclenche visuel & cooldown
         self.attacking           = True
         self.attack_timer        = 0
         self.attack_timer_visual = self.attack_duration
 
-        # calcule l’angle de la souris
         dxm = mouse_pos[0] - self.rect.centerx
         dym = mouse_pos[1] - self.rect.centery
         angle = math.degrees(math.atan2(-dym, dxm)) % 360
         self.last_attack_angle = angle
 
-        # applique dégâts dans le cône
         half = self.attack_angle / 2
-        for enemy in enemies:
-            dxe = enemy.rect.centerx - self.rect.centerx
-            dye = enemy.rect.centery - self.rect.centery
+        for e in enemies:
+            dxe = e.rect.centerx - self.rect.centerx
+            dye = e.rect.centery - self.rect.centery
             dist = math.hypot(dxe, dye)
-            r = enemy.rect.width / 2
+            r = e.rect.width / 2
             if dist - r <= self.attack_range:
-                a2e  = math.degrees(math.atan2(-dye, dxe)) % 360
+                a2e   = math.degrees(math.atan2(-dye, dxe)) % 360
                 delta = abs((angle - a2e + 180) % 360 - 180)
                 if delta <= half:
-                    enemy.hp -= self.attack_damage
-                    enemy.flash_timer = getattr(enemy, "flash_duration", 0)
+                    e.hp -= self.attack_damage
+                    e.flash_timer = getattr(e, "flash_duration", 0)
 
     def take_damage(self, amount):
         if self.armor > 0:
             self.armor -= 1
         else:
             self.hp -= amount
+
+    def scream(self, normal_enemies, mages, mouse_pos):
+        """Cri en cône de 45° vers la souris : slow + dégâts."""
+        if self.scream_timer > 0:
+            return
+        # son & cooldown
+        self.scream_sound.play()
+        self.scream_timer = self.scream_cooldown
+        # afficher cône
+        self.show_scream_cone   = True
+        self.scream_cone_timer  = 0.3
+
+        # calcule angle vers la souris
+        dxm = mouse_pos[0] - self.rect.centerx
+        dym = mouse_pos[1] - self.rect.centery
+        center_angle = math.degrees(math.atan2(-dym, dxm)) % 360
+        self.scream_angle = center_angle
+        half_cone = 45 / 2
+
+        for e in normal_enemies + mages:
+            dx = e.rect.centerx - self.rect.centerx
+            dy = e.rect.centery  - self.rect.centery
+            dist = math.hypot(dx, dy)
+            if dist > self.scream_range:
+                continue
+            angle_to_enemy = math.degrees(math.atan2(-dy, dx)) % 360
+            delta = abs((center_angle - angle_to_enemy + 180) % 360 - 180)
+            if delta <= half_cone:
+                e.hp -= self.scream_damage
+                e.slow_timer = self.scream_slow_duration
 
     def gain_xp(self, amount):
         bonus = getattr(self, "xp_bonus", 0.0)
@@ -217,22 +270,19 @@ class Player:
         self.skill_points += 1
         self.next_level_xp = int(self.next_level_xp * 1.15)
         self.new_level     = True
-        # joue le son de level-up
         self.levelup_sound.play()
-        # bonus auto
         self.max_hp        += 2
         self.hp            += 2
         self.max_arm       += 1
         self.armor         = self.max_arm
         self.attack_damage += 0.8
+        self.speed         += 5
 
-
-    # --- Pool réduit d’améliorations ---
+    # pool d’améliorations
     UPGRADE_KEYS = [
         "Strength Boost", "Vitality Surge", "Quick Reflexes",
         "Haste", "Armor Plating", "Extended Reach", "XP Bonus"
     ]
-
     UPGRADE_INFO = {
         "Strength Boost":   {"type":"flat",   "value": 2.5,  "unit":"Damage"},
         "Vitality Surge":   {"type":"flat",   "value": 5,    "unit":"Max HP"},
@@ -259,36 +309,42 @@ class Player:
         elif key == "Extended Reach":
             self.attack_range += 20
         elif key == "XP Bonus":
-            self.xp_bonus = getattr(self, "xp_bonus", 0) + 0.20
+            self.xp_bonus += 0.20
 
     def draw(self, surface, cam_x, cam_y):
-        # calcule y_off pour up/down uniquement
-        if   self.direction == 'up':
-            y_off = self.offset_up
-        elif self.direction == 'down':
-            y_off = self.offset_down
-        else:
-            y_off = 0
+        # 1) afficher cône
+        if self.show_scream_cone:
+            cone_surf = pygame.Surface((surface.get_width(), surface.get_height()), pygame.SRCALPHA)
+            apex_x = self.rect.centerx - cam_x
+            apex_y = self.rect.centery  - cam_y
+            half_cone = 45 / 2
+            length    = self.scream_range
+            angles = [self.scream_angle - half_cone, self.scream_angle + half_cone]
+            points = [(apex_x, apex_y)]
+            for a in angles:
+                rad = math.radians(a)
+                x = apex_x + math.cos(rad) * length
+                y = apex_y - math.sin(rad) * length
+                points.append((x, y))
+            pygame.draw.polygon(cone_surf, (0,0,255,51), points)
+            surface.blit(cone_surf, (0,0))
 
-        # dessine le joueur
-        surface.blit(
-            self.image,
-            (self.rect.x - cam_x,
-             self.rect.y - cam_y + y_off)
-        )
+        # 2) dessiner joueur
+        if   self.direction == 'up':    y_off = self.offset_up
+        elif self.direction == 'down':  y_off = self.offset_down
+        else:                           y_off = 0
 
-        # si en attaque, dessine le slash tourné et réduit
+        surface.blit(self.image, (self.rect.x - cam_x,
+                                  self.rect.y - cam_y + y_off))
+
+        # 3) slash si attaque
         if self.attacking:
-            # rotation : slash.png origine SW=225°
-            rot = self.last_attack_angle - 225
-            slash = pygame.transform.rotozoom(
-                self.raw_slash, rot, self.slash_scale
-            )
+            rot   = self.last_attack_angle - 225
+            slash = pygame.transform.rotozoom(self.raw_slash, rot, self.slash_scale)
             sw, sh = slash.get_size()
-            # décalage devant le joueur
-            rad     = math.radians(self.last_attack_angle)
-            dx_off  = math.cos(rad) * (self.attack_range * 0.5)
-            dy_off  = -math.sin(rad) * (self.attack_range * 0.5)
-            pos_x   = self.rect.centerx + dx_off - sw//2 - cam_x
-            pos_y   = self.rect.centery + dy_off - sh//2 - cam_y + y_off
-            surface.blit(slash, (pos_x, pos_y))
+            rad    = math.radians(self.last_attack_angle)
+            dx_off = math.cos(rad) * (self.attack_range * 0.5)
+            dy_off = -math.sin(rad) * (self.attack_range * 0.5)
+            px     = self.rect.centerx + dx_off - sw//2 - cam_x
+            py     = self.rect.centery  + dy_off - sh//2 - cam_y + y_off
+            surface.blit(slash, (px, py))
