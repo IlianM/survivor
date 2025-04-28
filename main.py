@@ -10,6 +10,8 @@ from settings import *
 from player import Player
 from enemy import Enemy
 from xp_orb import XPOrb
+from goblin_mage import GoblinMage
+
 
 class UpgradeMenu:
     def __init__(self):
@@ -36,7 +38,6 @@ class UpgradeMenu:
             self.rects.append(r)
 
     def draw(self, surf, alpha=255):
-        # fond semi-transparent
         ov = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
         ov.fill((0, 0, 0, alpha // 2))
         surf.blit(ov, (0, 0))
@@ -87,12 +88,10 @@ def main():
     pygame.mixer.music.set_volume(0.5)
     pygame.mixer.music.play(-1, fade_ms=2000)
 
-    # Écran principal
+    # Menu principal
     main_menu     = True
-    # Après : on charge puis on scale à la taille de la fenêtre
     raw_menu      = pygame.image.load("assets/main_menu.png").convert()
     main_menu_img = pygame.transform.scale(raw_menu, (WIDTH, HEIGHT))
-
     play_button_rect = pygame.Rect(
         WIDTH//2 - 210,
         HEIGHT//2 + 50,
@@ -100,18 +99,20 @@ def main():
         120
     )
 
-    # Décor tuilé sous-jacent
+    # Décor tuilé
     bg_img = pygame.image.load("assets/background.png").convert()
     bg_w, bg_h = bg_img.get_size()
 
     # Entités
-    player      = Player(MAP_WIDTH // 2, MAP_HEIGHT // 2)
-    enemy_list  = []
-    xp_orbs     = []
+    player     = Player(MAP_WIDTH // 2, MAP_HEIGHT // 2)
+    enemy_list = []
+    mages      = []
+    xp_orbs    = []
 
     # Timers & compteurs
     spawn_timer         = 0.0
     base_spawn_interval = 3.0
+    mage_spawn_chance   = 1    # 10% des spawns seront des mages
     start_ticks         = 0
     kills               = 0
     game_over           = False
@@ -133,7 +134,7 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
 
-            # Clic sur "Jouer" dans le menu principal
+            # Clic sur "Jouer"
             if main_menu and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if play_button_rect.collidepoint(event.pos):
                     main_menu   = False
@@ -141,9 +142,10 @@ def main():
                     kills       = 0
                     game_over   = False
                     enemy_list.clear()
+                    mages.clear()
                     xp_orbs.clear()
                     player.__init__(MAP_WIDTH // 2, MAP_HEIGHT // 2)
-                continue  # on saute le reste tant que le menu est ouvert
+                continue
 
             # Toggle auto-attack et menu compétence
             if not main_menu and not game_over:
@@ -165,43 +167,44 @@ def main():
                         upgrade_fade       = fade_out_dur
                         break
 
-        # Affichage du menu principal
+        # Affichage menu principal
         if main_menu:
-
             screen.blit(main_menu_img, (0, 0))
             overlay = pygame.Surface((play_button_rect.width, play_button_rect.height), pygame.SRCALPHA)
             screen.blit(overlay, (play_button_rect.x, play_button_rect.y))
-
             pygame.display.flip()
             continue
 
-        # Ouverture automatique du menu d’amélioration au level-up
+        # Ouvre le menu d’amélioration au level-up
         if player.new_level and not upgrade_active:
             upgrade_menu.open()
             upgrade_active = True
             upgrade_fade   = 0.0
 
-        # Caméra centrée sur le joueur
+        # Caméra centrée
         cam_x = max(0, min(player.rect.centerx - WIDTH//2,  MAP_WIDTH - WIDTH))
         cam_y = max(0, min(player.rect.centery - HEIGHT//2, MAP_HEIGHT - HEIGHT))
 
-        # Mise à jour du jeu (si pas de menu compétence ouvert)
+        # Mise à jour du jeu
         if not upgrade_active and not game_over:
-            # Joueur
             keys = pygame.key.get_pressed()
             player.update(keys, dt)
 
             # Attaques
-            if player.auto_attack and enemy_list:
-                target = min(enemy_list,
-                             key=lambda e: math.hypot(
-                                 e.rect.centerx - player.rect.centerx,
-                                 e.rect.centery  - player.rect.centery
-                             ))
-                player.attack(enemy_list, target.rect.center)
+            if player.auto_attack and (enemy_list or mages):
+                # cible l’ennemi ou mage le plus proche
+                all_targets = enemy_list + mages
+                target = min(
+                    all_targets,
+                    key=lambda e: math.hypot(
+                        e.rect.centerx - player.rect.centerx,
+                        e.rect.centery  - player.rect.centery
+                    )
+                )
+                player.attack(all_targets, target.rect.center)
             elif pygame.mouse.get_pressed()[0]:
                 mx, my = pygame.mouse.get_pos()
-                player.attack(enemy_list, (mx + cam_x, my + cam_y))
+                player.attack(enemy_list + mages, (mx + cam_x, my + cam_y))
 
             # Spawn dynamique
             game_time    = (pygame.time.get_ticks() - start_ticks) / 1000
@@ -229,23 +232,30 @@ def main():
                     x = cam_x + WIDTH + margin
                     y = random.randint(int(cam_y), int(cam_y + HEIGHT))
 
-                r = random.random()
-                if r < elite_chance:
-                    tier = 'elite'
-                elif r < elite_chance + rare_chance:
-                    tier = 'rare'
+                if random.random() < mage_spawn_chance:
+                    mages.append(GoblinMage(x, y))
                 else:
-                    tier = 'normal'
+                    # spawn d’un gobelin classique
+                    r = random.random()
+                    if r < elite_chance:
+                        tier = 'elite'
+                    elif r < elite_chance + rare_chance:
+                        tier = 'rare'
+                    else:
+                        tier = 'normal'
+                    enemy_list.append(
+                        Enemy(x, y, speed=60, tier=tier, player_level=player.level)
+                    )
 
-                enemy_list.append(
-                    Enemy(x, y, speed=60, tier=tier, player_level=player.level)
-                )
-
-            # 1) Update tous les ennemis
+            # 1) Update gobelins classiques
             for e in enemy_list:
                 e.update(player.rect.center, dt)
 
-            # 2) Séparation pour éviter le chevauchement
+            # 2) Update mages (projectiles inclus)
+            for m in mages:
+                m.update(player, dt, cam_x, cam_y)
+
+            # 3) Séparation entre gobelins classiques
             for i in range(len(enemy_list)):
                 e1 = enemy_list[i]
                 for j in range(i + 1, len(enemy_list)):
@@ -264,7 +274,7 @@ def main():
                         e2.rect.x -= shift_x
                         e2.rect.y -= shift_y
 
-            # 3) Collisions, mort & nettoyage
+            # 4) Collisions, mort & nettoyage gobelins classiques
             for e in enemy_list[:]:
                 hb = player.rect.inflate(-100, -100)
                 if e.rect.colliderect(hb):
@@ -283,7 +293,7 @@ def main():
                 if math.hypot(dx, dy) > max(WIDTH, HEIGHT) * 2:
                     enemy_list.remove(e)
 
-            # Orbes d’XP
+            # 5) Orbes d’XP
             for orb in xp_orbs:
                 orb.update(dt, player.rect.center)
             for orb in xp_orbs[:]:
@@ -291,6 +301,17 @@ def main():
                     orb.pickup_sound.play()
                     player.gain_xp(orb.value)
                     xp_orbs.remove(orb)
+
+            # 6) Collisions projectiles mage → joueur
+            for m in mages:
+                for fb in m.projectiles[:]:
+                    if fb.rect.colliderect(player.rect):
+                        player.take_damage(2)
+                        m.projectiles.remove(fb)
+            
+            # 7) Attaque du joueur sur les mages
+            # (player.attack() réduit déjà m.hp et positionne m.flash_timer)
+
 
             # Vérification Game Over
             if player.hp <= 0:
@@ -306,10 +327,9 @@ def main():
         for orb in xp_orbs:
             orb.draw(screen, cam_x, cam_y)
 
-        # Ennemis
+        # Gobelins classiques
         for e in enemy_list:
             e.draw(screen, cam_x, cam_y)
-            # barre de vie
             ex, ey = e.rect.x - cam_x, e.rect.y - cam_y
             bw, bh = e.rect.width, 5
             pygame.draw.rect(screen, (100, 0, 0), (ex, ey - bh - 2, bw, bh))
@@ -319,29 +339,38 @@ def main():
                 (ex, ey - bh - 2, bw * (e.hp / e.max_hp), bh)
             )
 
+        # 8) Mort & nettoyage des mages
+        for m in mages[:]:
+            if m.hp <= 0:
+                kills += 1
+                xp_orbs.append(XPOrb(m.rect.centerx, m.rect.centery, m.xp_value))
+                mages.remove(m)
+
+        # Gobelins mages
+        for m in mages:
+            m.draw(screen, cam_x, cam_y)
+
         # Joueur
         player.draw(screen, cam_x, cam_y)
 
-        # HUD (armure, vie, XP, level, skill points)
+        # HUD - bottom center
         abw, abh = 300, 20
-        ax, ay   = 20, 20
+        ax = (WIDTH - abw) // 2
+        ay = HEIGHT - 120
         pygame.draw.rect(screen, (50, 50, 50), (ax, ay, abw, abh))
         pr = max(player.armor, 0) / player.max_arm
         pygame.draw.rect(screen, (0, 150, 150), (ax, ay, abw * pr, abh))
         pygame.draw.rect(screen, (255, 255, 255), (ax, ay, abw, abh), 2)
-
         hy = ay + abh + 5
         pygame.draw.rect(screen, (100, 0, 0), (ax, hy, abw, abh))
         hr = max(player.hp, 0) / player.max_hp
         pygame.draw.rect(screen, (0, 200, 0), (ax, hy, abw * hr, abh))
         pygame.draw.rect(screen, (255, 255, 255), (ax, hy, abw, abh), 2)
-
         xy = hy + abh + 5
         pygame.draw.rect(screen, (80, 80, 0), (ax, xy, abw, 10))
         xr = player.xp / player.next_level_xp
         pygame.draw.rect(screen, (200, 200, 0), (ax, xy, abw * xr, 10))
         pygame.draw.rect(screen, (255, 255, 255), (ax, xy, abw, 10), 1)
-
         font = pygame.font.Font(None, 24)
         screen.blit(font.render(f"Level: {player.level}", True, (255, 255, 255)), (ax, xy + 15))
         screen.blit(font.render(f"SP: {player.skill_points}", True, (255, 255, 255)), (ax + 150, xy + 15))

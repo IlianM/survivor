@@ -68,7 +68,7 @@ class Player:
         self.offset_down   = 15
 
         # — Stats —
-        self.speed   = 200
+        self.speed   = 170
         self.max_hp  = 10
         self.hp      = self.max_hp
         self.max_arm = 5
@@ -225,7 +225,7 @@ class Player:
         self.max_arm       += 1
         self.armor         = self.max_arm
         self.attack_damage += 0.8
-        self.speed         += 5
+
 
     # --- Pool réduit d’améliorations ---
     UPGRADE_KEYS = [
