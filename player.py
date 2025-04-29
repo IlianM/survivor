@@ -57,14 +57,12 @@ class Player:
         self.offset_down   = 15
 
         # stats
-        self.speed   = 170
+        self.speed   = 150
         self.max_hp  = 10
         self.hp      = self.max_hp
-        self.max_arm = 5
-        self.armor   = self.max_arm
 
         # attaque
-        self.attack_range        = 120
+        self.attack_range        = 150
         self.attack_cooldown     = 1.0
         self.attack_angle        = 90
         self.attack_timer        = 0.0
@@ -91,7 +89,7 @@ class Player:
         self.auto_attack = True
 
         # dash
-        self.dash_cooldown  = 2.0
+        self.dash_cooldown  = 4.0
         self.dash_timer     = 0.0
         self.dash_duration  = 0.2
         self.dash_time_left = 0.0
@@ -101,7 +99,7 @@ class Player:
         # cri
         self.scream_cooldown      = 10.0
         self.scream_timer         = 0.0
-        self.scream_damage        = 1
+        self.scream_damage        = 4
         self.scream_range         = self.attack_range * 3
         self.scream_slow_duration = 3.0
         self.scream_slow_factor   = 0.6
@@ -117,6 +115,7 @@ class Player:
         self.scream_cone_timer  = 0.0
         self.scream_angle       = 0.0
 
+# player.py (extrait)
     def update(self, keys, dt):
         # — Timer du bonus Aimant —
         if self.magnet_active:
@@ -149,12 +148,12 @@ class Player:
             self.rect.y = max(0, min(self.rect.y, MAP_HEIGHT - self.rect.height))
             return
 
-        # 3) déplacement
+        # 3) déplacement (ZQSD + flèches)
         dx = dy = 0
-        if keys[pygame.K_z]: dy -= 1
-        if keys[pygame.K_s]: dy += 1
-        if keys[pygame.K_q]: dx -= 1
-        if keys[pygame.K_d]: dx += 1
+        if keys[pygame.K_z]   or keys[pygame.K_UP]:    dy -= 1
+        if keys[pygame.K_s]   or keys[pygame.K_DOWN]:  dy += 1
+        if keys[pygame.K_q]   or keys[pygame.K_LEFT]:  dx -= 1
+        if keys[pygame.K_d]   or keys[pygame.K_RIGHT]: dx += 1
         if dx or dy:
             length = math.hypot(dx, dy)
             dx /= length; dy /= length
@@ -275,11 +274,7 @@ class Player:
                 e.slow_timer = self.scream_slow_duration
 
     def take_damage(self, amount):
-        """Gère la prise de dégâts : on consomme d’abord l’armure, puis les PV."""
-        if self.armor > 0:
-            self.armor -= 1
-        else:
-            self.hp -= amount
+        self.hp -= amount
 
 
     def gain_xp(self, amount):
@@ -291,26 +286,23 @@ class Player:
 
     def level_up(self):
         self.level += 1
-
         self.next_level_xp = int(self.next_level_xp * 1.18)
         self.new_level     = True
         self.levelup_sound.play()
-        self.armor         = self.max_arm
         self.attack_damage += 1.2
 
     # pool d’améliorations
     UPGRADE_KEYS = [
         "Strength Boost", "Vitality Surge", "Quick Reflexes",
-        "Haste", "Armor Plating", "Extended Reach", "XP Bonus"
+        "Haste", "Extended Reach", "XP Bonus"
     ]
     UPGRADE_INFO = {
-        "Strength Boost":   {"type":"flat",   "value": 2.5,  "unit":"Damage"},
+        "Strength Boost":   {"type":"flat",   "value": 3,  "unit":"Damage"},
         "Vitality Surge":   {"type":"flat",   "value": 5,    "unit":"Max HP"},
         "Quick Reflexes":   {"type":"mult",   "value": 0.85,  "unit":"Cooldown"},
         "Haste":            {"type":"flat",   "value": 30,  "unit":"Speed"},
-        "Armor Plating":    {"type":"flat",   "value": 5,    "unit":"Armor"},
-        "Extended Reach":   {"type":"flat",   "value":20,    "unit":"Range"},
-        "XP Bonus":         {"type":"percent","value": 0.20, "unit":"XP"}
+        "Extended Reach":   {"type":"flat",   "value": 30,    "unit":"Range"},
+        "XP Bonus":         {"type":"percent","value": 0.25, "unit":"XP"}
     }
 
     def apply_upgrade(self, key):
@@ -323,13 +315,10 @@ class Player:
             self.attack_cooldown *= 0.85
         elif key == "Haste":
             self.speed += 30
-        elif key == "Armor Plating":
-            self.max_arm += 5
-            self.armor   += 5
         elif key == "Extended Reach":
-            self.attack_range += 20
+            self.attack_range += 30
         elif key == "XP Bonus":
-            self.xp_bonus += 0.20
+            self.xp_bonus += 0.25
 
 
     def apply_bonus(self, bonus_type):

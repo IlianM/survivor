@@ -1,4 +1,5 @@
 import pygame
+import pygame.gfxdraw
 import random
 import math
 import sys
@@ -10,74 +11,9 @@ from enemy import Enemy
 from xp_orb import XPOrb
 from goblin_mage import GoblinMage
 
+HEALTH_ORNAMENT = None
+HEALTH_TEXTURE  = None
 
-class UpgradeMenu:
-    def __init__(self):
-        self.choices = []
-        self.rects   = []
-
-        # police pour le titre et la description
-        self.title_font = pygame.font.Font(None, 28)
-        self.desc_font  = pygame.font.Font(None, 24)
-
-        # taille des cartes
-        self.btn_w   = 400
-        self.btn_h   = 600
-        self.margin  = 10
-
-        # charge et scale l'image de la carte
-        self.card_img_raw = pygame.image.load(os.path.join("assets", "upgrade_card.png")).convert_alpha()
-        self.card_img     = pygame.transform.scale(self.card_img_raw, (self.btn_w, self.btn_h))
-
-    def open(self):
-        self.choices = random.sample(Player.UPGRADE_KEYS, 3)
-        self.rects.clear()
-        total_w = 3 * self.btn_w + 2 * self.margin
-        start_x = (WIDTH - total_w) // 2
-        y = (HEIGHT - self.btn_h) // 2
-        for i in range(3):
-            r = pygame.Rect(
-                start_x + i * (self.btn_w + self.margin),
-                y,
-                self.btn_w,
-                self.btn_h
-            )
-            self.rects.append(r)
-
-    def draw(self, surf, alpha=255):
-        FONT_TITLE = pygame.font.Font("assets/fonts/Cinzel-Regular.ttf", 24)
-        FONT_BODY  = pygame.font.Font("assets/fonts/Cinzel-Regular.ttf", 16)
-
-
-        # semi-transparent dark overlay
-        ov = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        ov.fill((0, 0, 0, alpha // 2))
-        surf.blit(ov, (0, 0))
-
-        for key, rect in zip(self.choices, self.rects):
-            # 1) blit de la carte
-            surf.blit(self.card_img, rect.topleft)
-
-            # 2) titre centré
-            title_surf = FONT_TITLE.render(key, True, (255,255,255))
-            title_rect = title_surf.get_rect(center=(rect.centerx, rect.centery - 20))
-            surf.blit(title_surf, title_rect)
-
-            # 3) description (valeur) centré
-            info = Player.UPGRADE_INFO[key]
-            if info["type"] == "flat":
-                desc = f"+{info['value']} {info['unit']}"
-            elif info["type"] == "percent":
-                pct = int(info["value"] * 100)
-                desc = f"+{pct}% {info['unit']}"
-            else:  # 'mult'
-                pct = int((info["value"] - 1) * 100)
-                sign = "+" if pct > 0 else ""
-                desc = f"{sign}{pct}% {info['unit']}"
-
-            desc_surf = FONT_BODY.render(desc, True, (200, 200, 200))
-            desc_rect = desc_surf.get_rect(center=(rect.centerx, rect.centery + 20))
-            surf.blit(desc_surf, desc_rect)
 
 def draw_tiled_background(surf, cx, cy, bg_img, bg_w, bg_h):
     ox = -(cx % bg_w)
@@ -90,14 +26,134 @@ def draw_tiled_background(surf, cx, cy, bg_img, bg_w, bg_h):
             x += bg_w
         y += bg_h
 
+class UpgradeMenu:
+    def __init__(self):
+        self.choices = []
+        self.rects   = []
+        # on charge l'image et on récupère sa taille
+        self.card_img = pygame.image.load("assets/upgrade_card.png").convert_alpha()
+        self.btn_w, self.btn_h = self.card_img.get_size()
+        # espacement fixe entre chaque carte (à adapter si besoin)
+        self.margin = 20
+
+    def open(self):
+        self.choices = random.sample(Player.UPGRADE_KEYS, 3)
+        self.rects.clear()
+
+        n = len(self.choices)
+        group_width = n * self.btn_w + (n - 1) * self.margin
+        start_x = (WIDTH - group_width) // 2
+        y = (HEIGHT - self.btn_h) // 2
+
+        for i in range(n):
+            x = start_x + i * (self.btn_w + self.margin)
+            self.rects.append(pygame.Rect(x, y, self.btn_w, self.btn_h))
+            print(f"Carte {i} à x={x}, y={y}")
+
+    def draw(self, surf, alpha=255):
+        # overlay semi-transparent
+        ov = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        ov.fill((0, 0, 0, alpha//2))
+        surf.blit(ov, (0, 0))
+
+        FONT_TITLE = pygame.freetype.Font("assets/fonts/Cinzel-Regular.ttf", 24)
+        FONT_BODY  = pygame.freetype.Font("assets/fonts/Cinzel-Regular.ttf", 16)
+
+        for key, rect in zip(self.choices, self.rects):
+            # 1) on centre l'image sur le rect calculé
+            img_rect = self.card_img.get_rect(center=rect.center)
+            surf.blit(self.card_img, img_rect.topleft)
+
+            # 2) titre
+            title_surf, title_rect = FONT_TITLE.render(key, fgcolor=(255,255,255))
+            title_rect.center = (rect.centerx, rect.centery - 30)
+            surf.blit(title_surf, title_rect)
+
+            # 3) description
+            info = Player.UPGRADE_INFO[key]
+            if info["type"] == "flat":
+                desc = f"+{info['value']} {info['unit']}"
+            elif info["type"] == "percent":
+                desc = f"+{int(info['value']*100)}% {info['unit']}"
+            else:
+                pct = int((info["value"] - 1) * 100)
+                sign = "+" if pct > 0 else ""
+                desc = f"{sign}{pct}% {info['unit']}"
+
+            desc_surf, desc_rect = FONT_BODY.render(desc, fgcolor=(200,200,200))
+            desc_rect.center = (rect.centerx, rect.centery + 30)
+            surf.blit(desc_surf, desc_rect)
+
+
+def draw_health_globe(surface, cx, cy, radius, hp_ratio,
+                      bg_color=(0,0,0,128), fg_color=(149,26,26),
+                      outline_color=(255,255,255), outline_width=2):
+    """
+    Dessine un globe de vie texturé qui se remplit du bas vers le haut selon hp_ratio.
+    - surface   : surface pygame sur laquelle dessiner
+    - cx, cy    : centre du globe
+    - radius    : rayon du globe
+    - hp_ratio  : entre 0.0 (vide) et 1.0 (plein)
+    - bg_color  : couleur du fond (vide)
+    - fg_color  : couleur de la "eau"
+    - outline_* : style du contour
+    Utilise les globals HEALTH_TEXTURE et HEALTH_ORNAMENT chargés dans main().
+    """
+    # diamètre sans le contour
+    diameter = radius * 2
+
+    # 1) Fond (vide)
+    pygame.gfxdraw.filled_circle(surface, cx, cy, radius, bg_color)
+
+    # 2) Remplissage texturé de la "vie"
+    if hp_ratio > 0:
+        level_y = cy + radius - hp_ratio * diameter
+        y_start = max(int(math.ceil(level_y)), cy - radius)
+        y_end   = cy + radius
+
+        # texture redimensionnée
+        texture = pygame.transform.smoothscale(HEALTH_TEXTURE, (diameter, diameter))
+
+        # masque alpha : on ne garde que les lignes sous le niveau d'eau
+        mask = pygame.Surface((diameter, diameter), pygame.SRCALPHA)
+        for y in range(y_start, y_end + 1):
+            dy = y - cy
+            dx = int(math.sqrt(radius*radius - dy*dy))
+            local_y  = y - (cy - radius)
+            local_x1 = (cx - dx) - (cx - radius)
+            mask.fill((255,255,255,255), (local_x1, local_y, dx*2, 1))
+
+        # applique le masque à la texture
+        masked = texture.copy()
+        masked.blit(mask, (0,0), special_flags=pygame.BLEND_RGBA_MULT)
+
+        # blit de la partie "eau"
+        surface.blit(masked, (cx - radius, cy - radius))
+
+    # 3) Contour du globe
+    pygame.draw.circle(surface, outline_color, (cx, cy), radius, outline_width)
+
+    # 4) Ornement extérieur miroir
+    orn_size  = diameter + outline_width * 2 + 40
+    ornament  = pygame.transform.smoothscale(HEALTH_ORNAMENT, (orn_size, orn_size))
+    # effet miroir horizontal :
+    ornament  = pygame.transform.flip(ornament, True, False)
+    orn_rect  = ornament.get_rect(center=(cx, cy))
+    surface.blit(ornament, orn_rect)
+
 
 def main():
     pygame.init()
     pygame.mixer.init()
-    
+    pygame.freetype.init()  # initialise freetype
 
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Reincarnation of the unkillable last human against all gods")
+
+    global HEALTH_ORNAMENT, HEALTH_TEXTURE
+    HEALTH_ORNAMENT = pygame.image.load("assets/health_orb_ornement.png").convert_alpha()
+    HEALTH_TEXTURE  = pygame.image.load("assets/health_texture.png").convert_alpha()
+
     clock = pygame.time.Clock()
 
     # Musique de fond
@@ -116,7 +172,7 @@ def main():
         120
     )
 
-    # Décor tuilé
+    # Decor tuilé
     bg_img = pygame.image.load("assets/background.png").convert()
     bg_w, bg_h = bg_img.get_size()
 
@@ -126,19 +182,16 @@ def main():
     mages      = []
     xp_orbs    = []
 
-    # — Bonus Aimant —
+    # Bonus Aimant
     BONUS_TYPES = ["magnet"]
     BONUS_SIZE  = 64
-# juste après BONUS_SIZE
-    OFFSET = 200
-
+    OFFSET      = 200
     bonus_spawn_points = [
         (OFFSET, OFFSET),
         (MAP_WIDTH  - BONUS_SIZE - OFFSET, OFFSET),
         (OFFSET, MAP_HEIGHT - BONUS_SIZE - OFFSET),
         (MAP_WIDTH  - BONUS_SIZE - OFFSET, MAP_HEIGHT - BONUS_SIZE - OFFSET),
     ]
-
     current_bonus = None
 
     # Timers & compteurs
@@ -156,11 +209,19 @@ def main():
     upgrade_fade         = 0.0
     fade_in_dur          = 0.5
     fade_out_dur         = 1.0
-    upgrade_resume_timer = 0.0  # pause de 2s après choix
+    upgrade_resume_timer = 0.0  # pause après choix
 
     running = True
     while running:
         dt = clock.tick(FPS) / 1000
+
+
+
+        # Ouvre le menu automatiquement à la montée de niveau
+        if player.new_level and not upgrade_active:
+            upgrade_menu.open()
+            upgrade_active = True
+            upgrade_fade   = 0.0
 
         # --- ÉVÉNEMENTS ---
         for event in pygame.event.get():
@@ -183,17 +244,9 @@ def main():
             # En jeu
             if not main_menu and not game_over:
                 if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_y:
-                        player.auto_attack = not player.auto_attack
-                    elif event.key == pygame.K_k and not player.new_level:
-                        upgrade_active = not upgrade_active
-                        upgrade_fade   = 0.0 if upgrade_active else fade_out_dur
-
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    mx, my = event.pos
-                    if event.button == 1:
-                        player.attack(enemy_list + mages, (mx + cam_x, my + cam_y))
-                    elif event.button == 3:
+                    # CRI sur la touche C au lieu du clic droit
+                    if event.key == pygame.K_c:
+                        mx, my = pygame.mouse.get_pos()
                         world_pos = (mx + cam_x, my + cam_y)
                         player.scream(enemy_list, mages, world_pos)
 
@@ -203,9 +256,9 @@ def main():
                 for key, rect in zip(upgrade_menu.choices, upgrade_menu.rects):
                     if rect.collidepoint(mx, my):
                         player.apply_upgrade(key)
-                        player.new_level = False
-                        upgrade_active       = False
-                        upgrade_resume_timer = 0.7
+                        player.new_level         = False
+                        upgrade_active           = False
+                        upgrade_resume_timer     = 0.7
                         break
 
         # Pause post-upgrade
@@ -235,16 +288,14 @@ def main():
             keys = pygame.key.get_pressed()
             player.update(keys, dt)
 
-            # Auto-attaque
+            # Attaques auto ou manuelles
             if player.auto_attack and (enemy_list or mages):
                 all_targets = enemy_list + mages
-                target = min(
-                    all_targets,
-                    key=lambda e: math.hypot(
-                        e.rect.centerx - player.rect.centerx,
-                        e.rect.centery  - player.rect.centery
-                    )
-                )
+                target = min(all_targets,
+                             key=lambda e: math.hypot(
+                                 e.rect.centerx - player.rect.centerx,
+                                 e.rect.centery  - player.rect.centery
+                             ))
                 player.attack(all_targets, target.rect.center)
             elif pygame.mouse.get_pressed()[0]:
                 mx, my = pygame.mouse.get_pos()
@@ -423,8 +474,14 @@ def main():
         # Joueur
         player.draw(screen, cam_x, cam_y)
 
-                # — Indicateur de cooldown du dash —
-        bar_w, bar_h = 40, 5
+        # --- Health Globe HUD ---
+        globe_x = 150
+        globe_y = HEIGHT - 150
+        radius  = 100
+        hp_ratio = max(player.hp, 0) / player.max_hp
+        draw_health_globe(screen, globe_x, globe_y, radius, hp_ratio)
+                    # — Indicateur de cooldown du dash —
+        bar_w, bar_h = 40, 9
         px = player.rect.centerx - cam_x
         py = player.rect.bottom   - cam_y + 6
         # fond gris
@@ -436,21 +493,13 @@ def main():
         pygame.draw.rect(screen, (255,255,255), (px - bar_w//2, py, bar_w, bar_h), 1)
 
 
+
         # HUD - bottom center
         abw, abh = 300, 20
         ax = (WIDTH - abw) // 2
         ay = HEIGHT - 120
-        pygame.draw.rect(screen, (50, 50, 50), (ax, ay, abw, abh))
-        pr = max(player.armor, 0) / player.max_arm
-        pygame.draw.rect(screen, (0, 150, 150), (ax, ay, abw * pr, abh))
-        pygame.draw.rect(screen, (255, 255, 255), (ax, ay, abw, abh), 2)
         hy = ay + abh + 5
-        pygame.draw.rect(screen, (100, 0, 0), (ax, hy, abw, abh))
-        hr = max(player.hp, 0) / player.max_hp
-        pygame.draw.rect(screen, (0, 200, 0), (ax, hy, abw * hr, abh))
-        pygame.draw.rect(screen, (255, 255, 255), (ax, hy, abw, abh), 2)
         xy = hy + abh + 5
-        pygame.draw.rect(screen, (80, 80, 0), (ax, xy, abw, 10))
         xr = player.xp / player.next_level_xp
         pygame.draw.rect(screen, (200, 200, 0), (ax, xy, abw * xr, 10))
         pygame.draw.rect(screen, (255, 255, 255), (ax, xy, abw, 10), 1)
