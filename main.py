@@ -15,10 +15,19 @@ class UpgradeMenu:
     def __init__(self):
         self.choices = []
         self.rects   = []
-        self.font    = pygame.font.Font(None, 28)
-        self.btn_w   = 240
-        self.btn_h   = 120
-        self.margin  = 40
+
+        # police pour le titre et la description
+        self.title_font = pygame.font.Font(None, 28)
+        self.desc_font  = pygame.font.Font(None, 24)
+
+        # taille des cartes
+        self.btn_w   = 400
+        self.btn_h   = 600
+        self.margin  = 10
+
+        # charge et scale l'image de la carte
+        self.card_img_raw = pygame.image.load(os.path.join("assets", "upgrade_card.png")).convert_alpha()
+        self.card_img     = pygame.transform.scale(self.card_img_raw, (self.btn_w, self.btn_h))
 
     def open(self):
         self.choices = random.sample(Player.UPGRADE_KEYS, 3)
@@ -36,30 +45,39 @@ class UpgradeMenu:
             self.rects.append(r)
 
     def draw(self, surf, alpha=255):
+        FONT_TITLE = pygame.font.Font("assets/fonts/Cinzel-Regular.ttf", 24)
+        FONT_BODY  = pygame.font.Font("assets/fonts/Cinzel-Regular.ttf", 16)
+
+
+        # semi-transparent dark overlay
         ov = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
         ov.fill((0, 0, 0, alpha // 2))
         surf.blit(ov, (0, 0))
 
         for key, rect in zip(self.choices, self.rects):
+            # 1) blit de la carte
+            surf.blit(self.card_img, rect.topleft)
+
+            # 2) titre centré
+            title_surf = FONT_TITLE.render(key, True, (255,255,255))
+            title_rect = title_surf.get_rect(center=(rect.centerx, rect.centery - 20))
+            surf.blit(title_surf, title_rect)
+
+            # 3) description (valeur) centré
             info = Player.UPGRADE_INFO[key]
             if info["type"] == "flat":
                 desc = f"+{info['value']} {info['unit']}"
             elif info["type"] == "percent":
                 pct = int(info["value"] * 100)
                 desc = f"+{pct}% {info['unit']}"
-            else:
+            else:  # 'mult'
                 pct = int((info["value"] - 1) * 100)
                 sign = "+" if pct > 0 else ""
                 desc = f"{sign}{pct}% {info['unit']}"
 
-            pygame.draw.rect(surf, (50, 50, 50), rect)
-            pygame.draw.rect(surf, (200, 200, 200), rect, 2)
-
-            title = self.font.render(key, True, (255, 255, 255))
-            surf.blit(title, (rect.x + 10, rect.y + 10))
-            text = self.font.render(desc, True, (200, 200, 200))
-            surf.blit(text, (rect.x + 10, rect.y + 40))
-
+            desc_surf = FONT_BODY.render(desc, True, (200, 200, 200))
+            desc_rect = desc_surf.get_rect(center=(rect.centerx, rect.centery + 20))
+            surf.blit(desc_surf, desc_rect)
 
 def draw_tiled_background(surf, cx, cy, bg_img, bg_w, bg_h):
     ox = -(cx % bg_w)
@@ -76,6 +94,7 @@ def draw_tiled_background(surf, cx, cy, bg_img, bg_w, bg_h):
 def main():
     pygame.init()
     pygame.mixer.init()
+    
 
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Reincarnation of the unkillable last human against all gods")
