@@ -85,6 +85,29 @@ class UpgradeMenu:
             surf.blit(desc_surf, desc_rect)
 
 
+def draw_bottom_overlay(surface, overlay, y_offset=0, zoom=1):
+    """
+    Dessine l'overlay en bas de l'écran.
+    - surface    : la surface Pygame sur laquelle dessiner
+    - overlay    : image chargée (Surface) de bottom_overlay.png
+    - y_offset   : décalage vertical (+ monte, - descend)
+    - zoom       : facteur de zoom (1.0 = taille d'origine)
+    """
+    # si zoom != 1, on utilise rotozoom pour l'échelle dynamique
+    if zoom != 1.0:
+        ov = pygame.transform.rotozoom(overlay, 0, zoom)
+    else:
+        ov = overlay
+
+    rect = ov.get_rect()
+    # on ancre le bas de l'image à HEIGHT + y_offset
+    # et on centre horizontalement
+    rect.midbottom = (WIDTH // 2, HEIGHT + y_offset)
+
+    surface.blit(ov, rect)
+
+
+
 def draw_health_globe(surface, cx, cy, radius, hp_ratio,
                       bg_color=(0,0,0,128), fg_color=(149,26,26),
                       outline_color=(255,255,255), outline_width=2):
@@ -142,6 +165,7 @@ def draw_health_globe(surface, cx, cy, radius, hp_ratio,
     surface.blit(ornament, orn_rect)
 
 
+
 def main():
     pygame.init()
     pygame.mixer.init()
@@ -151,8 +175,13 @@ def main():
     pygame.display.set_caption("Reincarnation of the unkillable last human against all gods")
 
     global HEALTH_ORNAMENT, HEALTH_TEXTURE
+    bottom_overlay = pygame.image.load("assets/bottom_overlay.png").convert_alpha()
     HEALTH_ORNAMENT = pygame.image.load("assets/health_orb_ornement.png").convert_alpha()
     HEALTH_TEXTURE  = pygame.image.load("assets/health_texture.png").convert_alpha()
+
+    overlay_y_offset = 335    # + monte, - descend
+    overlay_zoom     = 0.9  # 1.0 = taille native
+
 
     clock = pygame.time.Clock()
 
@@ -474,6 +503,11 @@ def main():
         # Joueur
         player.draw(screen, cam_x, cam_y)
 
+        draw_bottom_overlay(screen, bottom_overlay,
+                    y_offset=overlay_y_offset,
+                    zoom=overlay_zoom)
+
+
         # --- Health Globe HUD ---
         globe_x = 150
         globe_y = HEIGHT - 150
@@ -494,18 +528,25 @@ def main():
 
 
 
-        # HUD - bottom center
-        abw, abh = 300, 20
-        ax = (WIDTH - abw) // 2
-        ay = HEIGHT - 120
-        hy = ay + abh + 5
-        xy = hy + abh + 5
+        # --- XP Bar + Level en haut-centre avec Cinzel ---
         xr = player.xp / player.next_level_xp
-        pygame.draw.rect(screen, (200, 200, 0), (ax, xy, abw * xr, 10))
-        pygame.draw.rect(screen, (255, 255, 255), (ax, xy, abw, 10), 1)
-        font = pygame.font.Font(None, 24)
-        screen.blit(font.render(f"Level: {player.level}", True, (255, 255, 255)), (ax, xy + 15))
+        bar_w, bar_h = 300, 8
+        bx = (WIDTH - bar_w) // 2
+        by = 20
 
+        # fond gris
+        pygame.draw.rect(screen, (50, 50, 50), (bx, by, bar_w, bar_h))
+        # remplissage XP
+        pygame.draw.rect(screen, (200, 200, 0), (bx, by, int(bar_w * xr), bar_h))
+        # contour blanc
+        pygame.draw.rect(screen, (255, 255, 255), (bx, by, bar_w, bar_h), 2)
+
+        # texte Level
+        FONT_HUD = pygame.freetype.Font("assets/fonts/Cinzel-Regular.ttf", 24)
+        txt_surf, txt_rect = FONT_HUD.render(f"Level: {player.level}", fgcolor=(255,255,255))
+        # on veut centrer horizontalement, juste sous la barre
+        txt_rect.midtop = (WIDTH // 2, by + bar_h + 5)
+        screen.blit(txt_surf, txt_rect)
         # Menu d’amélioration en fondu
         if upgrade_active or (not player.new_level and upgrade_fade > 0):
             if upgrade_active:
