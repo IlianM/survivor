@@ -57,7 +57,7 @@ class Player:
         self.offset_down   = 15
 
         # stats
-        self.speed   = 200
+        self.speed   = 170
         self.max_hp  = 10
         self.hp      = self.max_hp
         self.max_arm = 5
@@ -106,12 +106,24 @@ class Player:
         self.scream_slow_duration = 3.0
         self.scream_slow_factor   = 0.6
 
+
+        # Aimant
+        self.magnet_active   = False
+        self.magnet_timer    = 0.0
+        self.magnet_duration = 8.0   # durée de l’effet en secondes
+
         # affichage du cône
         self.show_scream_cone   = False
         self.scream_cone_timer  = 0.0
         self.scream_angle       = 0.0
 
     def update(self, keys, dt):
+        # — Timer du bonus Aimant —
+        if self.magnet_active:
+            self.magnet_timer -= dt
+            if self.magnet_timer <= 0:
+                self.magnet_active = False
+
         # 1) timers attaque, dash, cri
         self.attack_timer = min(self.attack_timer + dt, self.attack_cooldown)
         if self.attacking:
@@ -199,11 +211,13 @@ class Player:
     def attack(self, enemies, mouse_pos):
         if not self.can_attack():
             return
+        # joue le son et initialise visuel & cooldown
         self.attack_sound.play()
         self.attacking           = True
         self.attack_timer        = 0
         self.attack_timer_visual = self.attack_duration
 
+        # calcule l’angle de l’attaque
         dxm = mouse_pos[0] - self.rect.centerx
         dym = mouse_pos[1] - self.rect.centery
         angle = math.degrees(math.atan2(-dym, dxm)) % 360
@@ -211,22 +225,24 @@ class Player:
 
         half = self.attack_angle / 2
         for e in enemies:
+            # vecteur joueur→ennemi
             dxe = e.rect.centerx - self.rect.centerx
-            dye = e.rect.centery - self.rect.centery
+            dye = e.rect.centery  - self.rect.centery
             dist = math.hypot(dxe, dye)
             r = e.rect.width / 2
+            # si dans la portée
             if dist - r <= self.attack_range:
-                a2e   = math.degrees(math.atan2(-dye, dxe)) % 360
+                # calcule l’angle joueur→ennemi
+                a2e = math.degrees(math.atan2(-dye, dxe)) % 360
                 delta = abs((angle - a2e + 180) % 360 - 180)
                 if delta <= half:
-                    e.hp -= self.attack_damage
-                    e.flash_timer = getattr(e, "flash_duration", 0)
-
-    def take_damage(self, amount):
-        if self.armor > 0:
-            self.armor -= 1
-        else:
-            self.hp -= amount
+                    # si l’ennemi implémente take_damage(), on l’appelle
+                    if hasattr(e, "take_damage"):
+                        e.take_damage(self.attack_damage)
+                    else:
+                        # sinon on retire directement les PV et on déclenche le flash
+                        e.hp -= self.attack_damage
+                        e.flash_timer = getattr(e, "flash_duration", 0)
 
     def scream(self, normal_enemies, mages, mouse_pos):
         """Cri en cône de 45° vers la souris : slow + dégâts."""
@@ -258,6 +274,14 @@ class Player:
                 e.hp -= self.scream_damage
                 e.slow_timer = self.scream_slow_duration
 
+    def take_damage(self, amount):
+        """Gère la prise de dégâts : on consomme d’abord l’armure, puis les PV."""
+        if self.armor > 0:
+            self.armor -= 1
+        else:
+            self.hp -= amount
+
+
     def gain_xp(self, amount):
         bonus = getattr(self, "xp_bonus", 0.0)
         self.xp += int(amount * (1 + bonus))
@@ -267,16 +291,12 @@ class Player:
 
     def level_up(self):
         self.level += 1
-        self.skill_points += 1
-        self.next_level_xp = int(self.next_level_xp * 1.15)
+
+        self.next_level_xp = int(self.next_level_xp * 1.18)
         self.new_level     = True
         self.levelup_sound.play()
-        self.max_hp        += 2
-        self.hp            += 2
-        self.max_arm       += 1
         self.armor         = self.max_arm
-        self.attack_damage += 0.8
-        self.speed         += 5
+        self.attack_damage += 1.2
 
     # pool d’améliorations
     UPGRADE_KEYS = [
@@ -286,8 +306,8 @@ class Player:
     UPGRADE_INFO = {
         "Strength Boost":   {"type":"flat",   "value": 2.5,  "unit":"Damage"},
         "Vitality Surge":   {"type":"flat",   "value": 5,    "unit":"Max HP"},
-        "Quick Reflexes":   {"type":"mult",   "value": 0.7,  "unit":"Cooldown"},
-        "Haste":            {"type":"mult",   "value": 1.3,  "unit":"Speed"},
+        "Quick Reflexes":   {"type":"mult",   "value": 0.85,  "unit":"Cooldown"},
+        "Haste":            {"type":"flat",   "value": 30,  "unit":"Speed"},
         "Armor Plating":    {"type":"flat",   "value": 5,    "unit":"Armor"},
         "Extended Reach":   {"type":"flat",   "value":20,    "unit":"Range"},
         "XP Bonus":         {"type":"percent","value": 0.20, "unit":"XP"}
@@ -295,14 +315,14 @@ class Player:
 
     def apply_upgrade(self, key):
         if key == "Strength Boost":
-            self.attack_damage += 2.5
+            self.attack_damage += 3
         elif key == "Vitality Surge":
             self.max_hp += 5
             self.hp     += 5
         elif key == "Quick Reflexes":
-            self.attack_cooldown *= 0.7
+            self.attack_cooldown *= 0.85
         elif key == "Haste":
-            self.speed *= 1.3
+            self.speed += 30
         elif key == "Armor Plating":
             self.max_arm += 5
             self.armor   += 5
@@ -310,6 +330,13 @@ class Player:
             self.attack_range += 20
         elif key == "XP Bonus":
             self.xp_bonus += 0.20
+
+
+    def apply_bonus(self, bonus_type):
+        """Applique un bonus au joueur."""
+        if bonus_type == "magnet":
+            self.magnet_active = True
+            self.magnet_timer  = self.magnet_duration
 
     def draw(self, surface, cam_x, cam_y):
         # 1) afficher cône

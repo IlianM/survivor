@@ -39,6 +39,12 @@ class GoblinMage:
         self.min_mul          = 3.0
         self.max_mul          = 4.0
 
+    def take_damage(self, amount):
+# applique les PV et le flash
+        self.hp -= amount
+        self.flash_timer = self.flash_duration
+
+
     def update(self, player, dt, cam_x, cam_y):
         # 1) Timers
         if self.fire_timer > 0:
@@ -92,10 +98,10 @@ class GoblinMage:
                 self.projectiles.remove(fb)
 
     def draw(self, surface, cam_x, cam_y):
-        # Sprite
+        # 1) Sprite
         surface.blit(self.image, (self.rect.x - cam_x, self.rect.y - cam_y))
 
-        # Flash blanc
+        # 2) Flash blanc
         if self.flash_timer > 0:
             mask = pygame.mask.from_surface(self.image)
             flash_surf = mask.to_surface(
@@ -104,6 +110,16 @@ class GoblinMage:
             )
             surface.blit(flash_surf, (self.rect.x - cam_x, self.rect.y - cam_y))
 
-        # Projectiles
+        # 3) Barre de PV
+        bar_w, bar_h = self.rect.width, 5
+        bx = self.rect.x - cam_x
+        by = self.rect.y - cam_y - bar_h - 2
+        # fond rouge
+        pygame.draw.rect(surface, (100, 0, 0), (bx, by, bar_w, bar_h))
+        # remplissage vert proportionnel
+        hp_ratio = max(0, self.hp) / self.max_hp
+        pygame.draw.rect(surface, (0, 200, 0), (bx, by, bar_w * hp_ratio, bar_h))
+
+        # 4) Projectiles
         for fb in self.projectiles:
             fb.draw(surface, cam_x, cam_y)
