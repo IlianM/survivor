@@ -42,7 +42,7 @@ class Enemy:
         self.slow_timer = 0.0
 
         # XP & dégâts
-        self.xp_value = {'normal':100,'rare':10,'elite':15}[tier]
+        self.xp_value = {'normal':1,'rare':10,'elite':15}[tier]
         self.damage   = 1
 
         # Timers d’attaque
