@@ -10,10 +10,10 @@ from player import Player
 from enemy import Enemy
 from xp_orb import XPOrb
 from goblin_mage import GoblinMage
+from boss import Boss
 
 HEALTH_ORNAMENT = None
 HEALTH_TEXTURE  = None
-
 
 def draw_tiled_background(surf, cx, cy, bg_img, bg_w, bg_h):
     ox = -(cx % bg_w)
@@ -30,114 +30,64 @@ class UpgradeMenu:
     def __init__(self):
         self.choices = []
         self.rects   = []
-        # on charge l'image et on récupère sa taille
         self.card_img = pygame.image.load("assets/upgrade_card.png").convert_alpha()
         self.btn_w, self.btn_h = self.card_img.get_size()
-        # espacement fixe entre chaque carte (à adapter si besoin)
         self.margin = 20
+        self.font_title = pygame.freetype.Font("assets/fonts/Cinzel-Regular.ttf", 24)
+        self.font_body  = pygame.freetype.Font("assets/fonts/Cinzel-Regular.ttf", 16)
 
     def open(self):
         self.choices = random.sample(Player.UPGRADE_KEYS, 3)
         self.rects.clear()
-
         n = len(self.choices)
         group_width = n * self.btn_w + (n - 1) * self.margin
-        start_x = (WIDTH - group_width) // 2
-        y = (HEIGHT - self.btn_h) // 2
-
+        start_x     = (WIDTH - group_width) // 2
+        y           = (HEIGHT - self.btn_h) // 2
         for i in range(n):
             x = start_x + i * (self.btn_w + self.margin)
             self.rects.append(pygame.Rect(x, y, self.btn_w, self.btn_h))
-            print(f"Carte {i} à x={x}, y={y}")
 
     def draw(self, surf, alpha=255):
-        # overlay semi-transparent
         ov = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
         ov.fill((0, 0, 0, alpha//2))
         surf.blit(ov, (0, 0))
-
-        FONT_TITLE = pygame.freetype.Font("assets/fonts/Cinzel-Regular.ttf", 24)
-        FONT_BODY  = pygame.freetype.Font("assets/fonts/Cinzel-Regular.ttf", 16)
-
         for key, rect in zip(self.choices, self.rects):
-            # 1) on centre l'image sur le rect calculé
-            img_rect = self.card_img.get_rect(center=rect.center)
-            surf.blit(self.card_img, img_rect.topleft)
-
-            # 2) titre
-            title_surf, title_rect = FONT_TITLE.render(key, fgcolor=(255,255,255))
+            surf.blit(self.card_img, rect.topleft)
+            title_surf, title_rect = self.font_title.render(key, fgcolor=(255,255,255))
             title_rect.center = (rect.centerx, rect.centery - 30)
             surf.blit(title_surf, title_rect)
-
-            # 3) description
             info = Player.UPGRADE_INFO[key]
             if info["type"] == "flat":
                 desc = f"+{info['value']} {info['unit']}"
             elif info["type"] == "percent":
                 desc = f"+{int(info['value']*100)}% {info['unit']}"
             else:
-                pct = int((info["value"] - 1) * 100)
+                pct  = int((info["value"] - 1) * 100)
                 sign = "+" if pct > 0 else ""
                 desc = f"{sign}{pct}% {info['unit']}"
-
-            desc_surf, desc_rect = FONT_BODY.render(desc, fgcolor=(200,200,200))
+            desc_surf, desc_rect = self.font_body.render(desc, fgcolor=(200,200,200))
             desc_rect.center = (rect.centerx, rect.centery + 30)
             surf.blit(desc_surf, desc_rect)
 
-
 def draw_bottom_overlay(surface, overlay, y_offset=0, zoom=1):
-    """
-    Dessine l'overlay en bas de l'écran.
-    - surface    : la surface Pygame sur laquelle dessiner
-    - overlay    : image chargée (Surface) de bottom_overlay.png
-    - y_offset   : décalage vertical (+ monte, - descend)
-    - zoom       : facteur de zoom (1.0 = taille d'origine)
-    """
-    # si zoom != 1, on utilise rotozoom pour l'échelle dynamique
     if zoom != 1.0:
         ov = pygame.transform.rotozoom(overlay, 0, zoom)
     else:
         ov = overlay
-
     rect = ov.get_rect()
-    # on ancre le bas de l'image à HEIGHT + y_offset
-    # et on centre horizontalement
     rect.midbottom = (WIDTH // 2, HEIGHT + y_offset)
-
     surface.blit(ov, rect)
-
-
 
 def draw_health_globe(surface, cx, cy, radius, hp_ratio,
                       bg_color=(0,0,0,128), fg_color=(149,26,26),
                       outline_color=(255,255,255), outline_width=2):
-    """
-    Dessine un globe de vie texturé qui se remplit du bas vers le haut selon hp_ratio.
-    - surface   : surface pygame sur laquelle dessiner
-    - cx, cy    : centre du globe
-    - radius    : rayon du globe
-    - hp_ratio  : entre 0.0 (vide) et 1.0 (plein)
-    - bg_color  : couleur du fond (vide)
-    - fg_color  : couleur de la "eau"
-    - outline_* : style du contour
-    Utilise les globals HEALTH_TEXTURE et HEALTH_ORNAMENT chargés dans main().
-    """
-    # diamètre sans le contour
     diameter = radius * 2
-
-    # 1) Fond (vide)
     pygame.gfxdraw.filled_circle(surface, cx, cy, radius, bg_color)
-
-    # 2) Remplissage texturé de la "vie"
     if hp_ratio > 0:
         level_y = cy + radius - hp_ratio * diameter
         y_start = max(int(math.ceil(level_y)), cy - radius)
         y_end   = cy + radius
-
-        # texture redimensionnée
         texture = pygame.transform.smoothscale(HEALTH_TEXTURE, (diameter, diameter))
-
-        # masque alpha : on ne garde que les lignes sous le niveau d'eau
         mask = pygame.Surface((diameter, diameter), pygame.SRCALPHA)
         for y in range(y_start, y_end + 1):
             dy = y - cy
@@ -145,92 +95,74 @@ def draw_health_globe(surface, cx, cy, radius, hp_ratio,
             local_y  = y - (cy - radius)
             local_x1 = (cx - dx) - (cx - radius)
             mask.fill((255,255,255,255), (local_x1, local_y, dx*2, 1))
-
-        # applique le masque à la texture
         masked = texture.copy()
         masked.blit(mask, (0,0), special_flags=pygame.BLEND_RGBA_MULT)
-
-        # blit de la partie "eau"
         surface.blit(masked, (cx - radius, cy - radius))
-
-    # 3) Contour du globe
     pygame.draw.circle(surface, outline_color, (cx, cy), radius, outline_width)
-
-    # 4) Ornement extérieur miroir
     orn_size  = diameter + outline_width * 2 + 40
     ornament  = pygame.transform.smoothscale(HEALTH_ORNAMENT, (orn_size, orn_size))
-    # effet miroir horizontal :
     ornament  = pygame.transform.flip(ornament, True, False)
     orn_rect  = ornament.get_rect(center=(cx, cy))
     surface.blit(ornament, orn_rect)
 
-
-
 def main():
     pygame.init()
     pygame.mixer.init()
-    pygame.freetype.init()  # initialise freetype
+    pygame.freetype.init()
 
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Reincarnation of the unkillable last human against all gods")
 
-    # dans main(), après pygame.display.set_mode…
+    # timers
     screen_flash_timer = 0.0
-    FLASH_DURATION     = 0.08   # durée du flash en secondes
+    FLASH_DURATION     = 0.08
+    HIT_FLASH_DURATION = 0.05
 
+    # pour afficher le flash sur boss uniquement
+# pour afficher le flash sur boss uniquement
+    hit_flash_timer  = 0.0
+    hit_flash_target = None     # ce sera l’instance Boss touchée
 
     global HEALTH_ORNAMENT, HEALTH_TEXTURE
-    bottom_overlay = pygame.image.load("assets/bottom_overlay.png").convert_alpha()
+    bottom_overlay  = pygame.image.load("assets/bottom_overlay.png").convert_alpha()
     HEALTH_ORNAMENT = pygame.image.load("assets/health_orb_ornement.png").convert_alpha()
     HEALTH_TEXTURE  = pygame.image.load("assets/health_texture.png").convert_alpha()
 
-    overlay_y_offset = 335    # + monte, - descend
-    overlay_zoom     = 0.9  # 1.0 = taille native
-
+    overlay_y_offset = 335
+    overlay_zoom     = 0.9
 
     clock = pygame.time.Clock()
-
-    # Musique de fond
     pygame.mixer.music.load(os.path.join("fx", "background_music.mp3"))
     pygame.mixer.music.set_volume(0.5)
     pygame.mixer.music.play(-1, fade_ms=2000)
 
-    # Menu principal
     main_menu     = True
     raw_menu      = pygame.image.load("assets/main_menu.png").convert()
     main_menu_img = pygame.transform.scale(raw_menu, (WIDTH, HEIGHT))
-    play_button_rect = pygame.Rect(
-        WIDTH//2 - 210,
-        HEIGHT//2 + 50,
-        350,
-        120
-    )
-    BONUS_SIZE  = 64
-    # Decor tuilé
-    bg_img = pygame.image.load("assets/background.png").convert()
-    bg_w, bg_h = bg_img.get_size()
-    magnet_raw = pygame.image.load("assets/magnet.png").convert_alpha()
-    magnet_img = pygame.transform.smoothscale(magnet_raw, (BONUS_SIZE, BONUS_SIZE))
+    play_button_rect = pygame.Rect(WIDTH//2 - 210, HEIGHT//2 + 50, 350, 120)
 
-    # Entités
+    BONUS_SIZE  = 64
+    bg_img      = pygame.image.load("assets/background.png").convert()
+    bg_w, bg_h  = bg_img.get_size()
+    magnet_raw  = pygame.image.load("assets/magnet.png").convert_alpha()
+    magnet_img  = pygame.transform.smoothscale(magnet_raw, (BONUS_SIZE, BONUS_SIZE))
+
     player     = Player(MAP_WIDTH // 2, MAP_HEIGHT // 2)
     enemy_list = []
     mages      = []
+    boss_list  = []
     xp_orbs    = []
 
-    # Bonus Aimant
     BONUS_TYPES = ["magnet"]
-
     OFFSET      = 200
     bonus_spawn_points = [
         (OFFSET, OFFSET),
-        (MAP_WIDTH  - BONUS_SIZE - OFFSET, OFFSET),
+        (MAP_WIDTH - BONUS_SIZE - OFFSET, OFFSET),
         (OFFSET, MAP_HEIGHT - BONUS_SIZE - OFFSET),
-        (MAP_WIDTH  - BONUS_SIZE - OFFSET, MAP_HEIGHT - BONUS_SIZE - OFFSET),
+        (MAP_WIDTH - BONUS_SIZE - OFFSET, MAP_HEIGHT - BONUS_SIZE - OFFSET),
     ]
     current_bonus = None
 
-    # Timers & compteurs
     spawn_timer         = 0.0
     base_spawn_interval = 3.0
     mage_spawn_chance   = 0.1
@@ -239,35 +171,46 @@ def main():
     game_over           = False
     survival_time       = 0.0
 
-    # Menu d’amélioration
     upgrade_menu         = UpgradeMenu()
     upgrade_active       = False
     upgrade_fade         = 0.0
     fade_in_dur          = 0.5
     fade_out_dur         = 1.0
-    upgrade_resume_timer = 0.0  # pause après choix
+    upgrade_resume_timer = 0.0
 
-    running = True
-    while running:
+    while True:
         dt = clock.tick(FPS) / 1000
-        # en début de boucle while running:
         screen_flash_timer = max(0.0, screen_flash_timer - dt)
+        hit_flash_timer    = max(0.0, hit_flash_timer    - dt)
 
 
+        hit_flash_timer = max(0.0, hit_flash_timer - dt)
+        if hit_flash_timer == 0:
+            hit_flash_target = None
 
-
-        # Ouvre le menu automatiquement à la montée de niveau
-        if player.new_level and not upgrade_active:
+        # Level up → menu + boss spawn
+        if player.new_level:
             upgrade_menu.open()
             upgrade_active = True
             upgrade_fade   = 0.0
+            if player.level % 10 == 0:
+                safe_dist = 800
+                while True:
+                    bx = random.randint(0, MAP_WIDTH)
+                    by = random.randint(0, MAP_HEIGHT)
+                    if math.hypot(bx - player.rect.centerx, by - player.rect.centery) >= safe_dist:
+                        break
+                b = Boss(bx, by, player.level)
+                boss_list.append(b)
+                b.hit_flash_timer = 0.0
+            player.new_level = False
 
-        # --- ÉVÉNEMENTS ---
+        # Événements
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                running = False
+                pygame.quit()
+                sys.exit()
 
-            # Clic “Jouer”
             if main_menu and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if play_button_rect.collidepoint(event.pos):
                     main_menu   = False
@@ -277,332 +220,245 @@ def main():
                     enemy_list.clear()
                     mages.clear()
                     xp_orbs.clear()
+                    boss_list.clear()
                     player.__init__(MAP_WIDTH // 2, MAP_HEIGHT // 2)
                 continue
 
-            # En jeu
-            if not main_menu and not game_over:
-                if event.type == pygame.KEYDOWN:
-                    # CRI sur la touche C au lieu du clic droit
-                    if event.key == pygame.K_c:
-                        mx, my = pygame.mouse.get_pos()
-                        world_pos = (mx + cam_x, my + cam_y)
-                        player.scream(enemy_list, mages, world_pos)
+            if not main_menu and not game_over and not upgrade_active:
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_c:
+                    mx, my = pygame.mouse.get_pos()
+                    player.scream(enemy_list, mages, (mx+cam_x, my+cam_y))
 
-            # Clic dans le menu d’amélioration
             if upgrade_active and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                mx, my = event.pos
                 for key, rect in zip(upgrade_menu.choices, upgrade_menu.rects):
-                    if rect.collidepoint(mx, my):
+                    if rect.collidepoint(event.pos):
                         player.apply_upgrade(key)
-                        player.new_level         = False
-                        upgrade_active           = False
-                        upgrade_resume_timer     = 0.7
+                        upgrade_active       = False
+                        upgrade_resume_timer = 0.7
                         break
 
-        # Pause post-upgrade
         if upgrade_resume_timer > 0:
             upgrade_resume_timer -= dt
 
-        # Affichage menu principal
         if main_menu:
-            screen.blit(main_menu_img, (0, 0))
-            overlay = pygame.Surface((play_button_rect.width, play_button_rect.height), pygame.SRCALPHA)
-            screen.blit(overlay, (play_button_rect.x, play_button_rect.y))
+            screen.blit(main_menu_img, (0,0))
             pygame.display.flip()
             continue
 
-        # Ouvre le menu au level-up
-        if player.new_level and not upgrade_active:
-            upgrade_menu.open()
-            upgrade_active = True
-            upgrade_fade   = 0.0
-
         # Caméra
-        cam_x = max(0, min(player.rect.centerx - WIDTH//2,  MAP_WIDTH - WIDTH))
-        cam_y = max(0, min(player.rect.centery - HEIGHT//2, MAP_HEIGHT - HEIGHT))
+        cam_x = max(0, min(player.rect.centerx - WIDTH//2, MAP_WIDTH  - WIDTH))
+        cam_y = max(0, min(player.rect.centery  - HEIGHT//2, MAP_HEIGHT - HEIGHT))
 
-        # Jeu en cours
+        # Boucle de jeu
         if upgrade_resume_timer <= 0 and not upgrade_active and not game_over:
             keys = pygame.key.get_pressed()
             player.update(keys, dt)
 
-            # Attaques auto ou manuelles
-            if player.auto_attack and (enemy_list or mages):
-                all_targets = enemy_list + mages
-                target = min(all_targets,
-                             key=lambda e: math.hypot(
-                                 e.rect.centerx - player.rect.centerx,
-                                 e.rect.centery  - player.rect.centery
-                             ))
-                player.attack(all_targets, target.rect.center)
+            # Auto-attack (inclut boss)
+            if player.auto_attack and (enemy_list or mages or boss_list):
+                targets = enemy_list + mages + boss_list
+                t = min(targets, key=lambda e: math.hypot(e.rect.centerx-player.rect.centerx,
+                                                          e.rect.centery-player.rect.centery))
+                player.attack(targets, t.rect.center)
+                if t in boss_list:
+                    hit_flash_timer   = HIT_FLASH_DURATION
+                    hit_flash_target  = b       # on conserve la référence à l’objet Boss
+
+            # Clic pour attaquer
             elif pygame.mouse.get_pressed()[0]:
                 mx, my = pygame.mouse.get_pos()
-                player.attack(enemy_list + mages, (mx + cam_x, my + cam_y))
+                world_pos = (mx+cam_x, my+cam_y)
+                player.attack(enemy_list + mages + boss_list, world_pos)
+                for b in boss_list:
+                    if b.rect.collidepoint(world_pos):
+                        hit_flash_timer   = HIT_FLASH_DURATION
+                        hit_flash_target  = b       # on conserve la référence à l’objet Boss
 
-            # Spawn dynamique
+            # Spawn gobelins/mages
             game_time    = (pygame.time.get_ticks() - start_ticks) / 1000
             elite_chance = min(0.1, player.level * 0.005)
             rare_chance  = min(0.3, player.level * 0.015)
             time_mod     = 1 + game_time / 60
             level_mod    = max(0.2, 1 - player.level * 0.01)
             interval     = max(0.05, base_spawn_interval * level_mod / time_mod)
-
             spawn_timer += dt
             if spawn_timer >= interval:
                 spawn_timer = 0.0
-                margin = 50
-                edge   = random.choice(['top','bottom','left','right'])
+                edge = random.choice(['top','bottom','left','right'])
                 if edge == 'top':
-                    x = random.randint(int(cam_x), int(cam_x + WIDTH))
-                    y = cam_y - margin
+                    x = random.randint(int(cam_x), int(cam_x + WIDTH));  y = cam_y - 50
                 elif edge == 'bottom':
-                    x = random.randint(int(cam_x), int(cam_x + WIDTH))
-                    y = cam_y + HEIGHT + margin
+                    x = random.randint(int(cam_x), int(cam_x + WIDTH));  y = cam_y + HEIGHT + 50
                 elif edge == 'left':
-                    x = cam_x - margin
-                    y = random.randint(int(cam_y), int(cam_y + HEIGHT))
+                    x = cam_x - 50; y = random.randint(int(cam_y), int(cam_y + HEIGHT))
                 else:
-                    x = cam_x + WIDTH + margin
-                    y = random.randint(int(cam_y), int(cam_y + HEIGHT))
-
+                    x = cam_x + WIDTH + 50; y = random.randint(int(cam_y), int(cam_y + HEIGHT))
                 if random.random() < mage_spawn_chance:
                     mages.append(GoblinMage(x, y))
                 else:
                     r = random.random()
-                    if r < elite_chance:
-                        tier = 'elite'
-                    elif r < elite_chance + rare_chance:
-                        tier = 'rare'
-                    else:
-                        tier = 'normal'
-                    enemy_list.append(
-                        Enemy(x, y, speed=60, tier=tier, player_level=player.level)
-                    )
+                    tier = 'elite' if r < elite_chance else 'rare' if r < elite_chance+rare_chance else 'normal'
+                    enemy_list.append(Enemy(x, y, speed=60, tier=tier, player_level=player.level))
 
-            # 1) Update gobelins
-            for e in enemy_list:
-                e.update(player.rect.center, dt)
+            # Update gobelins/mages
+            for e in enemy_list: e.update(player.rect.center, dt)
+            for m in mages:      m.update(player, dt, cam_x, cam_y)
 
-            # 2) Update mages
-            for m in mages:
-                m.update(player, dt, cam_x, cam_y)
+            # Update & attaque bosses
+            for b in boss_list:
+                b.update(player.rect.center, dt)
+                dx = b.rect.centerx - player.rect.centerx
+                dy = b.rect.centery  - player.rect.centery
+                if math.hypot(dx, dy) <= b.attack_range and b.attack_timer <= 0:
+                    player.take_damage(b.damage)
+                    b.attack_timer = b.attack_cooldown
+                    screen_flash_timer = FLASH_DURATION
 
-            # 3) Séparation
-            all_enemies = enemy_list + mages
-            for i in range(len(all_enemies)):
-                e1 = all_enemies[i]
-                for j in range(i+1, len(all_enemies)):
-                    e2 = all_enemies[j]
-                    dx = e1.rect.centerx - e2.rect.centerx
-                    dy = e1.rect.centery   - e2.rect.centery
-                    dist    = math.hypot(dx, dy)
-                    min_dist = (e1.rect.width + e2.rect.width) * 0.5
-                    if 0 < dist < min_dist:
-                        nx, ny = dx/dist, dy/dist
-                        overlap = min_dist - dist
-                        shift_x = nx * overlap * 0.5
-                        shift_y = ny * overlap * 0.5
-                        e1.rect.x += shift_x; e1.rect.y += shift_y
-                        e2.rect.x -= shift_x; e2.rect.y -= shift_y
+            for b in boss_list[:]:
+                if b.hp <= 0:
+                    xp_orbs.append(XPOrb(b.rect.centerx, b.rect.centery, b.xp_value))
+                    boss_list.remove(b)
+                    if hit_flash_target is b:
+                        hit_flash_target = None
 
-            # 4) Collisions & morts gobelins
+
+            # Separation
+            all_entities = enemy_list+mages
+            for i in range(len(all_entities)):
+                e1=all_entities[i]
+                for e2 in all_entities[i+1:]:
+                    dx=e1.rect.centerx-e2.rect.centerx; dy=e1.rect.centery-e2.rect.centery
+                    dist=math.hypot(dx,dy); md=(e1.rect.width+e2.rect.width)/2
+                    if 0<dist<md:
+                        nx,ny=dx/dist,dy/dist; overlap=md-dist
+                        e1.rect.x+=nx*overlap*0.5; e1.rect.y+=ny*overlap*0.5
+                        e2.rect.x-=nx*overlap*0.5; e2.rect.y-=ny*overlap*0.5
+
+            # Collisions & kills
+            inset=50
             for e in enemy_list[:]:
-                MELEE_HITBOX_INSET = 50   # distance que l'on retire autour du joueur
-                hb = player.rect.inflate(-MELEE_HITBOX_INSET, -MELEE_HITBOX_INSET)
-                if e.rect.colliderect(hb):
-                    if e.attack_timer <= 0:
-                        player.take_damage(e.damage)
-                        e.attack_timer = e.attack_cooldown
-                        e.pause_timer  = 0.5
-                        # juste après player.take_damage(...)
-                        screen_flash_timer = FLASH_DURATION
-
-                    continue
-                if e.hp <= 0:
-                    kills += 1
-                    xp_orbs.append(XPOrb(e.rect.centerx, e.rect.centery, e.xp_value))
-                    enemy_list.remove(e)
-                    continue
-                dx = e.rect.centerx - player.rect.centerx
-                dy = e.rect.centery  - player.rect.centery
-                if math.hypot(dx, dy) > max(WIDTH, HEIGHT)*2:
+                hb=player.rect.inflate(-inset,-inset)
+                if e.rect.colliderect(hb) and e.attack_timer<=0:
+                    player.take_damage(e.damage); e.attack_timer=e.attack_cooldown; e.pause_timer=0.5; screen_flash_timer=FLASH_DURATION
+                if e.hp<=0:
+                    kills+=1; xp_orbs.append(XPOrb(e.rect.centerx,e.rect.centery,e.xp_value)); enemy_list.remove(e)
+                elif math.hypot(e.rect.centerx-player.rect.centerx,e.rect.centery-player.rect.centery)>max(WIDTH,HEIGHT)*2:
                     enemy_list.remove(e)
 
-            # 5) Orbes d’XP + magnet
-    # 5) Orbes d’XP + magnet
+            # XP orbs & magnet
             for orb in xp_orbs:
                 if player.magnet_active:
-                    # couvre toute la map
-                    orb.attract_radius = float('inf')
-                    # vitesse qui monte progressivement
-                    elapsed = player.magnet_duration - player.magnet_timer
-                    factor  = 3 + elapsed / player.magnet_duration
-                    orb.attract_speed = orb.base_attract_speed * factor
+                    orb.attract_radius=float('inf'); f=3+(player.magnet_duration-player.magnet_timer)/player.magnet_duration; orb.attract_speed=orb.base_attract_speed*f
                 else:
-                    # restore valeurs de base
-                    orb.attract_radius = orb.base_attract_radius
-                    orb.attract_speed  = orb.base_attract_speed
-
-                orb.update(dt, player.rect.center)
-            # Ramassage des orbes
+                    orb.attract_radius=orb.base_attract_radius; orb.attract_speed=orb.base_attract_speed
+                orb.update(dt,player.rect.center)
             for orb in xp_orbs[:]:
                 if orb.rect.colliderect(player.rect):
-                    orb.pickup_sound.play()
-                    player.gain_xp(orb.value)
-                    xp_orbs.remove(orb)
+                    orb.pickup_sound.play(); player.gain_xp(orb.value); xp_orbs.remove(orb)
 
-            # 6) Spawn & pickup du bonus Aimant
             if current_bonus is None:
-                btype = random.choice(BONUS_TYPES)
-                bx, by = random.choice(bonus_spawn_points)
-                bonus_rect = pygame.Rect(bx, by, BONUS_SIZE, BONUS_SIZE)
-                current_bonus = (btype, bonus_rect)
+                btype=random.choice(BONUS_TYPES); bx,by=random.choice(bonus_spawn_points)
+                current_bonus=(btype,pygame.Rect(bx,by,BONUS_SIZE,BONUS_SIZE))
             else:
-                btype, bonus_rect = current_bonus
-                if player.rect.colliderect(bonus_rect):
-                    player.apply_bonus(btype)
-                    current_bonus = None
+                _,br=current_bonus
+                if player.rect.colliderect(br):
+                    player.apply_bonus(_); current_bonus=None
 
-            # 7) Collisions projectiles mage → joueur
             for m in mages:
                 for fb in m.projectiles[:]:
                     if fb.rect.colliderect(player.rect):
-                        player.take_damage(2)
-                        m.projectiles.remove(fb)
-                        # déclenche le flash rouge full-screen
-                        screen_flash_timer = FLASH_DURATION
-
-
-            # 8) Mort & nettoyage des mages
+                        player.take_damage(2); m.projectiles.remove(fb); screen_flash_timer=FLASH_DURATION
             for m in mages[:]:
-                if m.hp <= 0:
-                    kills += 1
-                    xp_orbs.append(XPOrb(
-                        m.rect.centerx,
-                        m.rect.centery,
-                        m.xp_value
-                    ))
-                    mages.remove(m)
+                if m.hp<=0:
+                    kills+=1; xp_orbs.append(XPOrb(m.rect.centerx,m.rect.centery,m.xp_value)); mages.remove(m)
 
-            # Game Over
-            if player.hp <= 0:
-                game_over     = True
-                survival_time = game_time
+            game_time=(pygame.time.get_ticks()-start_ticks)/1000
+            if player.hp<=0:
+                game_over=True; survival_time=game_time
 
-        # --- DESSIN ---
+ # --- DESSIN ---
         draw_tiled_background(screen, cam_x, cam_y, bg_img, bg_w, bg_h)
-
-        # Orbes
-        for orb in xp_orbs:
-            orb.draw(screen, cam_x, cam_y)
-
-        # Bonus Aimant : on affiche l'icône magnet.png
+        for orb in xp_orbs: orb.draw(screen, cam_x, cam_y)
         if current_bonus:
-            _, bonus_rect = current_bonus
-            screen.blit(
-                magnet_img,
-                (bonus_rect.x - cam_x, bonus_rect.y - cam_y)
-            )
-        # Gobelins
+            _, br = current_bonus
+            screen.blit(magnet_img, (br.x - cam_x, br.y - cam_y))
         for e in enemy_list:
             e.draw(screen, cam_x, cam_y)
             ex, ey = e.rect.x - cam_x, e.rect.y - cam_y
             bw, bh = e.rect.width, 5
-            pygame.draw.rect(screen, (100, 0, 0), (ex, ey-bh-2, bw, bh))
-            pygame.draw.rect(screen, (0,200,0), (ex, ey-bh-2, bw*(e.hp/e.max_hp), bh))
-
-        # Mages
+            pygame.draw.rect(screen, (100,0,0), (ex, ey-bh-2, bw, bh))
+            pygame.draw.rect(screen, (0,200,0), (ex, ey-bh-2, int(bw*(e.hp/e.max_hp)), bh))
         for m in mages:
             m.draw(screen, cam_x, cam_y)
 
-        # Joueur
+        # Dessin des bosses
+        for b in boss_list:
+            b.draw(screen, cam_x, cam_y)
+            # barre de vie
+            hp_w, hp_h = b.rect.width, 5
+            ex, ey = b.rect.x - cam_x, b.rect.y - cam_y - 10
+            pygame.draw.rect(screen, (100,0,0), (ex, ey, hp_w, hp_h))
+            pygame.draw.rect(screen, (200,0,0), (ex, ey, int(hp_w*(b.hp/b.max_hp)), hp_h))
+
+        # Flash blanc localisé sur le boss touché
+# Flash blanc localisé sur le boss touché, en respectant la forme du sprite
+# FLASH BLANC LOCALISÉ SUR LE BOSS TOUCHÉ
+        if hit_flash_timer > 0 and hit_flash_target:
+            a = int(255 * (hit_flash_timer / HIT_FLASH_DURATION))
+            # copie du sprite (avec son canal alpha)
+            flash_img = hit_flash_target.image.copy()
+            # multiplie les pixels opaques par du blanc semi-transparent
+            flash_img.fill((255,255,255,a), special_flags=pygame.BLEND_RGBA_MULT)
+            # blit à la position du boss
+            screen.blit(flash_img,
+                        (hit_flash_target.rect.x - cam_x,
+                        hit_flash_target.rect.y - cam_y))
+
         player.draw(screen, cam_x, cam_y)
+        draw_bottom_overlay(screen, bottom_overlay, y_offset=overlay_y_offset, zoom=overlay_zoom)
 
-        draw_bottom_overlay(screen, bottom_overlay,
-                    y_offset=overlay_y_offset,
-                    zoom=overlay_zoom)
+        globe_x,globe_y,radius = 150,HEIGHT-150,100
+        draw_health_globe(screen,globe_x,globe_y,radius,max(player.hp,0)/player.max_hp)
 
+        # Dash bar
+        bw,bh=40,9; px=player.rect.centerx-cam_x; py=player.rect.bottom-cam_y+6
+        pygame.draw.rect(screen,(50,50,50),(px-bw//2,py,bw,bh))
+        ratio=1.0 if player.dash_timer<=0 else max(0,1-player.dash_timer/player.dash_cooldown)
+        pygame.draw.rect(screen,(0,200,200),(px-bw//2,py,int(bw*ratio),bh))
+        pygame.draw.rect(screen,(255,255,255),(px-bw//2,py,bw,bh),1)
 
-        # --- Health Globe HUD ---
-        globe_x = 150
-        globe_y = HEIGHT - 150
-        radius  = 100
-        hp_ratio = max(player.hp, 0) / player.max_hp
-        draw_health_globe(screen, globe_x, globe_y, radius, hp_ratio)
-                    # — Indicateur de cooldown du dash —
-        bar_w, bar_h = 40, 9
-        px = player.rect.centerx - cam_x
-        py = player.rect.bottom   - cam_y + 6
-        # fond gris
-        pygame.draw.rect(screen, (50,50,50), (px - bar_w//2, py, bar_w, bar_h))
-        # remplissage proportionnel
-        ratio = 1.0 if player.dash_timer <= 0 else max(0, 1 - player.dash_timer / player.dash_cooldown)
-        pygame.draw.rect(screen, (0,200,200), (px - bar_w//2, py, int(bar_w * ratio), bar_h))
-        # bordure blanche
-        pygame.draw.rect(screen, (255,255,255), (px - bar_w//2, py, bar_w, bar_h), 1)
+        # XP bar & level
+        xr=player.xp/player.next_level_xp; bar_w,bar_h=300,8; bx=(WIDTH-bar_w)//2; by=20
+        pygame.draw.rect(screen,(50,50,50),(bx,by,bar_w,bar_h))
+        pygame.draw.rect(screen,(200,200,0),(bx,by,int(bar_w*xr),bar_h))
+        pygame.draw.rect(screen,(255,255,255),(bx,by,bar_w,bar_h),2)
+        FONT_HUD=pygame.freetype.Font("assets/fonts/Cinzel-Regular.ttf",24)
+        ts,tr=FONT_HUD.render(f"Level: {player.level}",fgcolor=(255,255,255))
+        tr.midtop=(WIDTH//2,by+bar_h+5); screen.blit(ts,tr)
 
-
-
-        # --- XP Bar + Level en haut-centre avec Cinzel ---
-        xr = player.xp / player.next_level_xp
-        bar_w, bar_h = 300, 8
-        bx = (WIDTH - bar_w) // 2
-        by = 20
-
-        # fond gris
-        pygame.draw.rect(screen, (50, 50, 50), (bx, by, bar_w, bar_h))
-        # remplissage XP
-        pygame.draw.rect(screen, (200, 200, 0), (bx, by, int(bar_w * xr), bar_h))
-        # contour blanc
-        pygame.draw.rect(screen, (255, 255, 255), (bx, by, bar_w, bar_h), 2)
-
-        # texte Level
-        FONT_HUD = pygame.freetype.Font("assets/fonts/Cinzel-Regular.ttf", 24)
-        txt_surf, txt_rect = FONT_HUD.render(f"Level: {player.level}", fgcolor=(255,255,255))
-        # on veut centrer horizontalement, juste sous la barre
-        txt_rect.midtop = (WIDTH // 2, by + bar_h + 5)
-        screen.blit(txt_surf, txt_rect)
-        # Menu d’amélioration en fondu
-        if upgrade_active or (not player.new_level and upgrade_fade > 0):
+        if upgrade_active or (not player.new_level and upgrade_fade>0):
             if upgrade_active:
-                upgrade_fade = min(upgrade_fade + dt, fade_in_dur)
+                upgrade_fade=min(upgrade_fade+dt,fade_in_dur)
             else:
-                upgrade_fade = max(upgrade_fade - dt, 0)
-            alpha = int(255 * (upgrade_fade / fade_in_dur))
-            upgrade_menu.draw(screen, alpha)
+                upgrade_fade=max(upgrade_fade-dt,0)
+            alpha=int(255*(upgrade_fade/fade_in_dur))
+            upgrade_menu.draw(screen,alpha)
 
-        # Écran Game Over
         if game_over:
-            screen.fill((0, 0, 0))
-            f1 = pygame.font.Font(None, 72)
-            f2 = pygame.font.Font(None, 48)
-            lines = [
-                "GAME OVER",
-                f"Survived: {survival_time:.1f}s",
-                f"Level:    {player.level}",
-                f"Kills:    {kills}"
-            ]
-            for i, text in enumerate(lines):
-                fn   = f1 if i == 0 else f2
-                surf = fn.render(text, True, (255, 255, 255))
-                screen.blit(surf, ((WIDTH - surf.get_width()) // 2, 150 + i * 80))
+            screen.fill((0,0,0))
+            f1=pygame.font.Font(None,72); f2=pygame.font.Font(None,48)
+            lines=["GAME OVER",f"Survived: {survival_time:.1f}s",f"Level:    {player.level}",f"Kills:    {kills}"]
+            for i,t in enumerate(lines):
+                fn=f1 if i==0 else f2; surf=fn.render(t,True,(255,255,255))
+                screen.blit(surf,((WIDTH-surf.get_width())//2,150+i*80))
 
-        if screen_flash_timer > 0:
-            # on fait varier l’alpha de 0.5 (mi-opaque) → 0 selon le déclin du timer
-            alpha = int(255 * 0.5 * (screen_flash_timer / FLASH_DURATION))
-            flash_surf = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-            flash_surf.fill((255, 0, 0, alpha))
-            screen.blit(flash_surf, (0, 0))
-
+        if not game_over and screen_flash_timer > 0:
+            a = int(255 * 0.5 * (screen_flash_timer / FLASH_DURATION))
+            fs = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            fs.fill((255, 0, 0, a))
+            screen.blit(fs, (0, 0))
 
         pygame.display.flip()
-
-    # Fondu de sortie de la musique et fermeture
-    pygame.mixer.music.fadeout(2000)
-    pygame.time.delay(2000)
-    pygame.quit()
-
 
 if __name__ == "__main__":
     main()
