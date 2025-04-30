@@ -205,10 +205,12 @@ def main():
         350,
         120
     )
-
+    BONUS_SIZE  = 64
     # Decor tuilé
     bg_img = pygame.image.load("assets/background.png").convert()
     bg_w, bg_h = bg_img.get_size()
+    magnet_raw = pygame.image.load("assets/magnet.png").convert_alpha()
+    magnet_img = pygame.transform.smoothscale(magnet_raw, (BONUS_SIZE, BONUS_SIZE))
 
     # Entités
     player     = Player(MAP_WIDTH // 2, MAP_HEIGHT // 2)
@@ -218,7 +220,7 @@ def main():
 
     # Bonus Aimant
     BONUS_TYPES = ["magnet"]
-    BONUS_SIZE  = 64
+
     OFFSET      = 200
     bonus_spawn_points = [
         (OFFSET, OFFSET),
@@ -495,13 +497,13 @@ def main():
         for orb in xp_orbs:
             orb.draw(screen, cam_x, cam_y)
 
-        # Bonus Aimant
+        # Bonus Aimant : on affiche l'icône magnet.png
         if current_bonus:
             _, bonus_rect = current_bonus
-            s = pygame.Surface((BONUS_SIZE, BONUS_SIZE), pygame.SRCALPHA)
-            s.fill((255, 0, 0, 153))
-            screen.blit(s, (bonus_rect.x - cam_x, bonus_rect.y - cam_y))
-
+            screen.blit(
+                magnet_img,
+                (bonus_rect.x - cam_x, bonus_rect.y - cam_y)
+            )
         # Gobelins
         for e in enemy_list:
             e.draw(screen, cam_x, cam_y)
