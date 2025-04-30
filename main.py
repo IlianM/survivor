@@ -174,6 +174,11 @@ def main():
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Reincarnation of the unkillable last human against all gods")
 
+    # dans main(), après pygame.display.set_mode…
+    screen_flash_timer = 0.0
+    FLASH_DURATION     = 0.08   # durée du flash en secondes
+
+
     global HEALTH_ORNAMENT, HEALTH_TEXTURE
     bottom_overlay = pygame.image.load("assets/bottom_overlay.png").convert_alpha()
     HEALTH_ORNAMENT = pygame.image.load("assets/health_orb_ornement.png").convert_alpha()
@@ -243,6 +248,9 @@ def main():
     running = True
     while running:
         dt = clock.tick(FPS) / 1000
+        # en début de boucle while running:
+        screen_flash_timer = max(0.0, screen_flash_timer - dt)
+
 
 
 
@@ -398,12 +406,16 @@ def main():
 
             # 4) Collisions & morts gobelins
             for e in enemy_list[:]:
-                hb = player.rect.inflate(-100, -100)
+                MELEE_HITBOX_INSET = 50   # distance que l'on retire autour du joueur
+                hb = player.rect.inflate(-MELEE_HITBOX_INSET, -MELEE_HITBOX_INSET)
                 if e.rect.colliderect(hb):
                     if e.attack_timer <= 0:
                         player.take_damage(e.damage)
                         e.attack_timer = e.attack_cooldown
                         e.pause_timer  = 0.5
+                        # juste après player.take_damage(...)
+                        screen_flash_timer = FLASH_DURATION
+
                     continue
                 if e.hp <= 0:
                     kills += 1
@@ -456,6 +468,8 @@ def main():
                     if fb.rect.colliderect(player.rect):
                         player.take_damage(2)
                         m.projectiles.remove(fb)
+                        # déclenche le flash rouge full-screen
+                        screen_flash_timer = FLASH_DURATION
 
 
             # 8) Mort & nettoyage des mages
@@ -571,6 +585,14 @@ def main():
                 fn   = f1 if i == 0 else f2
                 surf = fn.render(text, True, (255, 255, 255))
                 screen.blit(surf, ((WIDTH - surf.get_width()) // 2, 150 + i * 80))
+
+        if screen_flash_timer > 0:
+            # on fait varier l’alpha de 0.5 (mi-opaque) → 0 selon le déclin du timer
+            alpha = int(255 * 0.5 * (screen_flash_timer / FLASH_DURATION))
+            flash_surf = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            flash_surf.fill((255, 0, 0, alpha))
+            screen.blit(flash_surf, (0, 0))
+
 
         pygame.display.flip()
 

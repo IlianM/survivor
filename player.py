@@ -60,6 +60,7 @@ class Player:
         self.speed   = 150
         self.max_hp  = 10
         self.hp      = self.max_hp
+        self.regen_rate = 0.2
 
         # attaque
         self.attack_range        = 150
@@ -117,6 +118,9 @@ class Player:
 
 # player.py (extrait)
     def update(self, keys, dt):
+        # — Régénération passive —
+        self.hp = min(self.hp + self.regen_rate * dt, self.max_hp)
+
         # — Timer du bonus Aimant —
         if self.magnet_active:
             self.magnet_timer -= dt
@@ -148,12 +152,12 @@ class Player:
             self.rect.y = max(0, min(self.rect.y, MAP_HEIGHT - self.rect.height))
             return
 
-        # 3) déplacement (ZQSD + flèches)
+        # 3) déplacement
         dx = dy = 0
-        if keys[pygame.K_z]   or keys[pygame.K_UP]:    dy -= 1
-        if keys[pygame.K_s]   or keys[pygame.K_DOWN]:  dy += 1
-        if keys[pygame.K_q]   or keys[pygame.K_LEFT]:  dx -= 1
-        if keys[pygame.K_d]   or keys[pygame.K_RIGHT]: dx += 1
+        if keys[pygame.K_z]: dy -= 1
+        if keys[pygame.K_s]: dy += 1
+        if keys[pygame.K_q]: dx -= 1
+        if keys[pygame.K_d]: dx += 1
         if dx or dy:
             length = math.hypot(dx, dy)
             dx /= length; dy /= length
