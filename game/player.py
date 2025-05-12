@@ -3,7 +3,7 @@
 import pygame
 import math
 import os
-from settings import MAP_WIDTH, MAP_HEIGHT
+from .settings import MAP_WIDTH, MAP_HEIGHT
 
 class Player:
     def __init__(self, x, y):
@@ -106,6 +106,11 @@ class Player:
         self.scream_slow_factor   = 0.6
 
 
+        self.scream_cone_duration = self.scream_slow_duration
+        self.scream_cone_timer    = 0.0
+        self.show_scream_cone     = False
+
+
         # Aimant
         self.magnet_active   = False
         self.magnet_timer    = 0.0
@@ -123,8 +128,8 @@ class Player:
 
         # — Timer du bonus Aimant —
         if self.magnet_active:
-            self.magnet_timer -= dt
-            if self.magnet_timer <= 0:
+            self.magnet_timer = max(0.0, self.magnet_timer - dt)
+            if self.magnet_timer == 0.0:
                 self.magnet_active = False
 
         # 1) timers attaque, dash, cri
@@ -134,10 +139,8 @@ class Player:
             if self.attack_timer_visual <= 0:
                 self.attacking = False
 
-        if self.dash_timer > 0:
-            self.dash_timer -= dt
-        if self.scream_timer > 0:
-            self.scream_timer -= dt
+        self.dash_timer   = max(0.0, self.dash_timer   - dt)
+        self.scream_timer = max(0.0, self.scream_timer - dt)
         if self.show_scream_cone:
             self.scream_cone_timer -= dt
             if self.scream_cone_timer <= 0:
@@ -148,22 +151,28 @@ class Player:
             self.dash_time_left -= dt
             self.rect.x += self.dash_dir[0] * self.dash_speed * dt
             self.rect.y += self.dash_dir[1] * self.dash_speed * dt
+            # clamp X et Y
             self.rect.x = max(0, min(self.rect.x, MAP_WIDTH  - self.rect.width))
             self.rect.y = max(0, min(self.rect.y, MAP_HEIGHT - self.rect.height))
             return
 
-        # 3) déplacement
+        # 3) lecture des touches
         dx = dy = 0
-        if keys[pygame.K_z]: dy -= 1
-        if keys[pygame.K_s]: dy += 1
-        if keys[pygame.K_q]: dx -= 1
-        if keys[pygame.K_d]: dx += 1
-        if dx or dy:
-            length = math.hypot(dx, dy)
-            dx /= length; dy /= length
+        def keydown(k):
+            if hasattr(keys, "get"):
+                return keys.get(k, False)
+            try:
+                return keys[k]
+            except Exception:
+                return False
+
+        if keydown(pygame.K_z): dy -= 1
+        if keydown(pygame.K_s): dy += 1
+        if keydown(pygame.K_q): dx -= 1
+        if keydown(pygame.K_d): dx += 1
 
         # 4) dash déclenché
-        if keys[pygame.K_SPACE] and self.dash_timer <= 0:
+        if keydown(pygame.K_SPACE) and self.dash_timer <= 0:
             if dx or dy:
                 self.dash_dir = (dx, dy)
             else:
@@ -174,12 +183,16 @@ class Player:
             return
 
         # 5) animation marche
-        if dy < 0:    self.direction = 'up'
-        elif dy > 0:  self.direction = 'down'
-        elif dx < 0:  self.direction = 'left'
-        elif dx > 0:  self.direction = 'right'
+        if dy < 0:
+            self.direction = 'up'
+        elif dy > 0:
+            self.direction = 'down'
+        elif dx < 0:
+            self.direction = 'left'
+        elif dx > 0:
+            self.direction = 'right'
 
-        moving = (dx or dy)
+        moving = (dx != 0 or dy != 0)
         if moving:
             self.anim_timer += dt
             if self.anim_timer >= self.anim_interval:
@@ -202,9 +215,14 @@ class Player:
         else:
             self.image = self.walk_frames_right[self.anim_index % len(self.walk_frames_right)]
 
-        # 6) déplacement normal
-        self.rect.x += dx * self.speed * dt
-        self.rect.y += dy * self.speed * dt
+        # 6) déplacement normalisé (vitesse constante en diagonale)
+        mag = math.hypot(dx, dy)
+        if mag > 0:
+            nx, ny = dx / mag, dy / mag
+            self.rect.x += nx * self.speed * dt
+            self.rect.y += ny * self.speed * dt
+
+        # clamp X et Y dans la map
         self.rect.x = max(0, min(self.rect.x, MAP_WIDTH  - self.rect.width))
         self.rect.y = max(0, min(self.rect.y, MAP_HEIGHT - self.rect.height))
 
@@ -251,12 +269,10 @@ class Player:
         """Cri en cône de 45° vers la souris : slow + dégâts."""
         if self.scream_timer > 0:
             return
-        # son & cooldown
-        self.scream_sound.play()
-        self.scream_timer = self.scream_cooldown
-        # afficher cône
-        self.show_scream_cone   = True
-        self.scream_cone_timer  = 0.3
+        # Lancer du cri : dégâts, slow, etc.
+        self.scream_timer     = self.scream_cooldown
+        self.show_scream_cone = True
+        self.scream_cone_timer = self.scream_cone_duration
 
         # calcule angle vers la souris
         dxm = mouse_pos[0] - self.rect.centerx
@@ -278,7 +294,7 @@ class Player:
                 e.slow_timer = self.scream_slow_duration
 
     def take_damage(self, amount):
-        self.hp -= amount
+        self.hp = max(self.hp - amount, 0)
 
 
     def gain_xp(self, amount):

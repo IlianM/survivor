@@ -2,7 +2,7 @@
 
 import pygame
 import math
-from settings import MAP_WIDTH, MAP_HEIGHT
+from .settings import MAP_WIDTH, MAP_HEIGHT
 
 class Fireball:
     def __init__(self, x, y, target_pos, speed=300):

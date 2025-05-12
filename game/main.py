@@ -5,12 +5,12 @@ import math
 import sys
 import os
 
-from settings import *
-from player import Player
-from enemy import Enemy
-from xp_orb import XPOrb
-from goblin_mage import GoblinMage
-from boss import Boss
+from .settings import *
+from .player import Player
+from .enemy import Enemy
+from .xp_orb import XPOrb
+from .goblin_mage import GoblinMage
+from .boss import Boss
 
 HEALTH_ORNAMENT = None
 HEALTH_TEXTURE  = None

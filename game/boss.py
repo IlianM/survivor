@@ -1,8 +1,7 @@
 # boss.py
 import pygame, math
-from enemy import Enemy
-from settings import MAP_WIDTH, MAP_HEIGHT
-
+from .enemy import Enemy
+from .settings import MAP_WIDTH, MAP_HEIGHT
 class Boss(Enemy):
     def __init__(self, x, y, player_level):
         super().__init__(x, y, speed=40, tier='elite', player_level=player_level)

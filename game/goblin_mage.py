@@ -1,10 +1,10 @@
 # goblin_mage.py
 
-import pygame
 import os
 import math
-from settings import MAP_WIDTH, MAP_HEIGHT, WIDTH, HEIGHT
-from projectile import Fireball
+import pygame
+from .settings import MAP_WIDTH, MAP_HEIGHT, WIDTH, HEIGHT
+from .projectile import Fireball
 
 class GoblinMage:
     def __init__(self, x, y):
@@ -26,12 +26,13 @@ class GoblinMage:
 
         self.projectiles      = []
 
-        # HP & XP
+        # HP, XP & dégâts
         self.max_hp           = 6
         self.hp               = self.max_hp
         self.xp_value         = 12
+        self.damage           = 2
 
-        # Flash blanc
+        # Flash blanc lors de la hit
         self.flash_duration   = 0.2
         self.flash_timer      = 0.0
 
@@ -40,10 +41,9 @@ class GoblinMage:
         self.max_mul          = 4.0
 
     def take_damage(self, amount):
-# applique les PV et le flash
+        # Applique les PV et déclenche le flash
         self.hp -= amount
         self.flash_timer = self.flash_duration
-
 
     def update(self, player, dt, cam_x, cam_y):
         # 1) Timers
@@ -63,8 +63,8 @@ class GoblinMage:
         dist = math.hypot(dx, dy) or 1
         nx, ny = dx/dist, dy/dist
 
-        desired_min = player.attack_range * self.min_mul
-        desired_max = player.attack_range * self.max_mul
+        desired_min = getattr(player, "attack_range", 50) * self.min_mul
+        desired_max = getattr(player, "attack_range", 50) * self.max_mul
         move = self.base_speed * speed_factor * dt
 
         if dist > desired_max:
@@ -101,7 +101,7 @@ class GoblinMage:
         # 1) Sprite
         surface.blit(self.image, (self.rect.x - cam_x, self.rect.y - cam_y))
 
-        # 2) Flash blanc
+        # 2) Flash blanc respectant la forme du sprite
         if self.flash_timer > 0:
             mask = pygame.mask.from_surface(self.image)
             flash_surf = mask.to_surface(
@@ -114,9 +114,7 @@ class GoblinMage:
         bar_w, bar_h = self.rect.width, 5
         bx = self.rect.x - cam_x
         by = self.rect.y - cam_y - bar_h - 2
-        # fond rouge
         pygame.draw.rect(surface, (100, 0, 0), (bx, by, bar_w, bar_h))
-        # remplissage vert proportionnel
         hp_ratio = max(0, self.hp) / self.max_hp
         pygame.draw.rect(surface, (0, 200, 0), (bx, by, bar_w * hp_ratio, bar_h))
 
