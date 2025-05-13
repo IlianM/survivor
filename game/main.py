@@ -11,6 +11,10 @@ from .enemy import Enemy
 from .xp_orb import XPOrb
 from .goblin_mage import GoblinMage
 from .boss import Boss
+from PIL import Image
+
+from .settings import WIDTH, HEIGHT   # ou votre constante de chemin
+
 
 HEALTH_ORNAMENT = None
 HEALTH_TEXTURE  = None
@@ -18,6 +22,9 @@ HEALTH_TEXTURE  = None
     # Cap de monstres, évolue avec le level
 BASE_MAX_ENEMIES   = 5   # nombre mini de mobs au level 1
 PER_LEVEL_ENEMIES  = 2    # mobs en plus par level
+
+TOUCHES_IMG_PATH = os.path.join("assets", "touches.png")
+ 
 
 
 def draw_tiled_background(surf, cx, cy, bg_img, bg_w, bg_h):
@@ -110,6 +117,187 @@ def draw_health_globe(surface, cx, cy, radius, hp_ratio,
     orn_rect  = ornament.get_rect(center=(cx, cy))
     surface.blit(ornament, orn_rect)
 
+
+import os, sys
+import pygame
+from PIL import Image
+
+def load_clean(path):
+    """
+    Try to pygame.load() and .convert_alpha(); if SDL_image balks,
+    re-save via Pillow as 8-bit RGBA, load that, then delete temp.
+    """
+    try:
+        return pygame.image.load(path).convert_alpha()
+    except pygame.error:
+        # fallback: re‐encode with Pillow
+        img = Image.open(path).convert("RGBA")
+        tmp = path + ".clean.png"
+        img.save(tmp)
+        surf = pygame.image.load(tmp).convert_alpha()
+        os.remove(tmp)
+        return surf
+def show_story_slideshow(screen, clock):
+    """
+    Play assets/story1.png … story7.png in sequence at 80% height:
+     - Letterbox (black bars top/bottom)
+     - FADE IN   (black→transparent)
+     - HOLD 3s
+     - FADE OUT  (transparent→black)
+    Abort on any key/mouse (jumps straight out), QUIT closes.
+    """
+    WIDTH, HEIGHT = screen.get_size()
+    target_h = int(HEIGHT * 0.8)
+    
+    # preload & scale all seven images
+    imgs = []
+    for i in range(1, 8):
+        path = os.path.join("assets", f"story{i}.png")
+        raw = load_clean(path)
+        # maintain aspect ratio
+        w = int(target_h * raw.get_width() / raw.get_height())
+        img = pygame.transform.smoothscale(raw, (w, target_h))
+        imgs.append(img)
+
+    for img in imgs:
+        rect  = img.get_rect(center=(WIDTH//2, HEIGHT//2))
+        black = pygame.Surface((WIDTH, HEIGHT))
+        black.fill((0,0,0))
+
+        skip = False
+        # — FADE IN (alpha 255→0) —
+        for alpha in range(255, -1, -15):
+            for e in pygame.event.get():
+                if e.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN, pygame.QUIT):
+                    if e.type == pygame.QUIT:
+                        pygame.quit(); sys.exit()
+                    skip = True
+                    break
+            if skip: break
+
+            black.set_alpha(alpha)
+            screen.fill((0,0,0))
+            screen.blit(img,  rect)
+            screen.blit(black, (0,0))
+            pygame.display.flip()
+            clock.tick(60)
+        if skip: break
+
+        # — HOLD (3 seconds) —
+        start = pygame.time.get_ticks()
+        while pygame.time.get_ticks() - start < 3000:
+            for e in pygame.event.get():
+                if e.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN, pygame.QUIT):
+                    if e.type == pygame.QUIT:
+                        pygame.quit(); sys.exit()
+                    skip = True
+                    break
+            if skip: break
+            screen.fill((0,0,0))
+            screen.blit(img, rect)
+            pygame.display.flip()
+            clock.tick(30)
+        if skip: break
+
+        # — FADE OUT (alpha 0→255) —
+        for alpha in range(0, 256, 15):
+            for e in pygame.event.get():
+                if e.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN, pygame.QUIT):
+                    if e.type == pygame.QUIT:
+                        pygame.quit(); sys.exit()
+                    skip = True
+                    break
+            if skip: break
+
+            black.set_alpha(alpha)
+            screen.fill((0,0,0))
+            screen.blit(img,  rect)
+            screen.blit(black, (0,0))
+            pygame.display.flip()
+            clock.tick(60)
+        if skip: break
+
+    # at exit, control returns to caller
+
+def show_touches_screen(screen, clock):
+    """
+    Very similar fade‐in → wait → fade‐out for TOUCHES_IMG_PATH,
+    but also render the Cinzel key‐binding text over top.
+    """
+    WIDTH, HEIGHT = screen.get_size()
+    img     = load_clean(TOUCHES_IMG_PATH)
+    img_rect= img.get_rect(center=(WIDTH//2, HEIGHT//2))
+    black   = pygame.Surface((WIDTH, HEIGHT))
+    black.fill((0,0,0))
+
+    # prepare Cinzel
+    font_path = os.path.join("assets","fonts","Cinzel","static","Cinzel-Regular.ttf")
+    font_size = 36
+    font      = pygame.font.Font(font_path, font_size)
+    lines     = ["Se déplacer : ZQSD", "Dash : ESPACE", "Cri : Clique droit"]
+    spacing   = 10
+    total_h   = len(lines)*font_size + (len(lines)-1)*spacing
+    y_start   = HEIGHT//2 - total_h//2
+
+    # FADE IN
+    for alpha in range(255, -1, -5):
+        # abort on input
+        for e in pygame.event.get():
+            if e.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN, pygame.QUIT):
+                if e.type == pygame.QUIT:
+                    pygame.quit(); sys.exit()
+                return
+        black.set_alpha(alpha)
+        screen.fill((0,0,0))
+        screen.blit(img, img_rect)
+        # draw text
+        for i, txt in enumerate(lines):
+            surf = font.render(txt, True, (255,255,255))
+            r    = surf.get_rect(center=(WIDTH//2,
+                             y_start + i*(font_size+spacing) + font_size//2))
+            screen.blit(surf, r)
+        screen.blit(black, (0,0))
+        pygame.display.flip()
+        clock.tick(60)
+
+    # WAIT for any key/mouse
+    waiting = True
+    while waiting:
+        for e in pygame.event.get():
+            if e.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN, pygame.QUIT):
+                if e.type == pygame.QUIT:
+                    pygame.quit(); sys.exit()
+                waiting = False
+                break
+        screen.fill((0,0,0))
+        screen.blit(img, img_rect)
+        for i, txt in enumerate(lines):
+            surf = font.render(txt, True, (255,255,255))
+            r    = surf.get_rect(center=(WIDTH//2,
+                             y_start + i*(font_size+spacing) + font_size//2))
+            screen.blit(surf, r)
+        pygame.display.flip()
+        clock.tick(30)
+
+    # FADE OUT
+    for alpha in range(0, 256, 5):
+        for e in pygame.event.get():
+            if e.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN, pygame.QUIT):
+                if e.type == pygame.QUIT:
+                    pygame.quit(); sys.exit()
+                return
+        black.set_alpha(alpha)
+        screen.fill((0,0,0))
+        screen.blit(img, img_rect)
+        for i, txt in enumerate(lines):
+            surf = font.render(txt, True, (255,255,255))
+            r    = surf.get_rect(center=(WIDTH//2,
+                             y_start + i*(font_size+spacing) + font_size//2))
+            screen.blit(surf, r)
+        screen.blit(black, (0,0))
+        pygame.display.flip()
+        clock.tick(60)
+
 def main():
     pygame.init()
     pygame.mixer.init()
@@ -185,6 +373,7 @@ def main():
 
 
 
+
     while True:
         dt = clock.tick(FPS) / 1000
         screen_flash_timer = max(0.0, screen_flash_timer - dt)
@@ -218,18 +407,27 @@ def main():
                 pygame.quit()
                 sys.exit()
 
-            if main_menu and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                if play_button_rect.collidepoint(event.pos):
-                    main_menu   = False
-                    start_ticks = pygame.time.get_ticks()
-                    kills       = 0
-                    game_over   = False
-                    enemy_list.clear()
-                    mages.clear()
-                    xp_orbs.clear()
-                    boss_list.clear()
-                    player.__init__(MAP_WIDTH // 2, MAP_HEIGHT // 2)
-                continue
+        # au clic “Jouer” en menu principal, on affiche d’abord l’écran “touches” en fondu
+        if main_menu and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if play_button_rect.collidepoint(event.pos):
+                # 1) run the 7-image slideshow (skip on any key/mouse)
+                show_story_slideshow(screen, clock)
+
+                # 2) then show the controls screen (skip on any key/mouse)
+                show_touches_screen(screen, clock)
+
+                # 3) finally actually start the game
+                main_menu   = False
+                start_ticks = pygame.time.get_ticks()
+                kills       = 0
+                game_over   = False
+                enemy_list.clear()
+                mages.clear()
+                xp_orbs.clear()
+                boss_list.clear()
+                player.__init__(MAP_WIDTH // 2, MAP_HEIGHT // 2)
+
+            continue
 
             if not main_menu and not game_over and not upgrade_active:
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_c:
