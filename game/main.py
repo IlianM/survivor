@@ -15,6 +15,11 @@ from .boss import Boss
 HEALTH_ORNAMENT = None
 HEALTH_TEXTURE  = None
 
+    # Cap de monstres, évolue avec le level
+BASE_MAX_ENEMIES   = 5   # nombre mini de mobs au level 1
+PER_LEVEL_ENEMIES  = 2    # mobs en plus par level
+
+
 def draw_tiled_background(surf, cx, cy, bg_img, bg_w, bg_h):
     ox = -(cx % bg_w)
     oy = -(cy % bg_h)
@@ -178,6 +183,8 @@ def main():
     fade_out_dur         = 1.0
     upgrade_resume_timer = 0.0
 
+
+
     while True:
         dt = clock.tick(FPS) / 1000
         screen_flash_timer = max(0.0, screen_flash_timer - dt)
@@ -284,6 +291,14 @@ def main():
             spawn_timer += dt
             if spawn_timer >= interval:
                 spawn_timer = 0.0
+            # — Cap dynamique lié au niveau —
+                current_enemies = len(enemy_list) + len(mages) + len(boss_list)
+                cap = BASE_MAX_ENEMIES + PER_LEVEL_ENEMIES * (player.level - 1)
+                if current_enemies >= cap:
+                    continue   # on saute ce spawn-ci
+
+
+
                 edge = random.choice(['top','bottom','left','right'])
                 if edge == 'top':
                     x = random.randint(int(cam_x), int(cam_x + WIDTH));  y = cam_y - 50
