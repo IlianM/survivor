@@ -4,6 +4,8 @@ import random
 import math
 import sys
 import os
+import pygame.surfarray as surfarray
+import numpy as np
 
 from .settings import *
 from .player import Player
@@ -15,16 +17,47 @@ from PIL import Image
 
 from .settings import WIDTH, HEIGHT   # ou votre constante de chemin
 
+# — Globals that must be loaded after pygame.display is ready —
+ICON_SIZE       = 64
+CRI_ICON_PATH   = os.path.join("assets", "cri.png")
+CRI_ICON        = None
+CRI_ICON_GRAY   = None
+FONT_SMALL      = None
 
 HEALTH_ORNAMENT = None
 HEALTH_TEXTURE  = None
 
-    # Cap de monstres, évolue avec le level
-BASE_MAX_ENEMIES   = 5   # nombre mini de mobs au level 1
-PER_LEVEL_ENEMIES  = 2    # mobs en plus par level
+# Cap de monstres, évolue avec le level
+BASE_MAX_ENEMIES   = 5   # mobs minimum level 1
+PER_LEVEL_ENEMIES  = 2   # mobs en plus par level
 
 TOUCHES_IMG_PATH = os.path.join("assets", "touches.png")
- 
+
+
+def get_cri_icons():
+    """Lazy-load color + grayscale CRI_ICON and small font."""
+    global CRI_ICON, CRI_ICON_GRAY, FONT_SMALL
+    if CRI_ICON is None:
+        # 1) Load & scale the color icon
+        raw = pygame.image.load(CRI_ICON_PATH).convert_alpha()
+        CRI_ICON = pygame.transform.scale(raw, (ICON_SIZE, ICON_SIZE))
+        # 2) Build grayscale version
+        CRI_ICON_GRAY = pygame.Surface((ICON_SIZE, ICON_SIZE), pygame.SRCALPHA)
+        CRI_ICON_GRAY.blit(CRI_ICON, (0, 0))
+        arr = surfarray.array3d(CRI_ICON_GRAY)
+        lum = (
+            0.299 * arr[:, :, 0] +
+            0.587 * arr[:, :, 1] +
+            0.114 * arr[:, :, 2]
+        ).astype("uint8")
+        gray_arr = np.stack([lum, lum, lum], axis=2)
+        surfarray.blit_array(CRI_ICON_GRAY, gray_arr)
+        # 3) Load a small Font for cooldown text
+        FONT_SMALL = pygame.font.Font(
+            os.path.join("assets", "fonts", "Cinzel", "static", "Cinzel-Regular.ttf"),
+            20
+        )
+    return CRI_ICON, CRI_ICON_GRAY, FONT_SMALL
 
 
 def draw_tiled_background(surf, cx, cy, bg_img, bg_w, bg_h):
@@ -38,36 +71,40 @@ def draw_tiled_background(surf, cx, cy, bg_img, bg_w, bg_h):
             x += bg_w
         y += bg_h
 
+
 class UpgradeMenu:
     def __init__(self):
-        self.choices = []
-        self.rects   = []
+        self.choices  = []
+        self.rects    = []
         self.card_img = pygame.image.load("assets/upgrade_card.png").convert_alpha()
         self.btn_w, self.btn_h = self.card_img.get_size()
-        self.margin = 20
-        self.font_title = pygame.freetype.Font("assets/fonts/Cinzel-Regular.ttf", 24)
-        self.font_body  = pygame.freetype.Font("assets/fonts/Cinzel-Regular.ttf", 16)
+        self.margin        = 20
+        self.font_title    = pygame.freetype.Font("assets/fonts/Cinzel-Regular.ttf", 24)
+        self.font_body     = pygame.freetype.Font("assets/fonts/Cinzel-Regular.ttf", 16)
 
     def open(self):
         self.choices = random.sample(Player.UPGRADE_KEYS, 3)
         self.rects.clear()
         n = len(self.choices)
-        group_width = n * self.btn_w + (n - 1) * self.margin
-        start_x     = (WIDTH - group_width) // 2
-        y           = (HEIGHT - self.btn_h) // 2
-        for i in range(n):
+        group_w    = n * self.btn_w + (n - 1) * self.margin
+        start_x    = (WIDTH - group_w) // 2
+        y          = (HEIGHT - self.btn_h) // 2
+        for i, key in enumerate(self.choices):
             x = start_x + i * (self.btn_w + self.margin)
             self.rects.append(pygame.Rect(x, y, self.btn_w, self.btn_h))
 
-    def draw(self, surf, alpha=255):
+    def draw(self, surf, alpha=255, show_choices=True):
         ov = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
         ov.fill((0, 0, 0, alpha//2))
         surf.blit(ov, (0, 0))
+        if not show_choices:
+            return
         for key, rect in zip(self.choices, self.rects):
             surf.blit(self.card_img, rect.topleft)
-            title_surf, title_rect = self.font_title.render(key, fgcolor=(255,255,255))
-            title_rect.center = (rect.centerx, rect.centery - 30)
-            surf.blit(title_surf, title_rect)
+            t_surf, t_rect = self.font_title.render(key, fgcolor=(255,255,255))
+            t_rect.center  = (rect.centerx, rect.centery - 30)
+            surf.blit(t_surf, t_rect)
+
             info = Player.UPGRADE_INFO[key]
             if info["type"] == "flat":
                 desc = f"+{info['value']} {info['unit']}"
@@ -77,9 +114,11 @@ class UpgradeMenu:
                 pct  = int((info["value"] - 1) * 100)
                 sign = "+" if pct > 0 else ""
                 desc = f"{sign}{pct}% {info['unit']}"
-            desc_surf, desc_rect = self.font_body.render(desc, fgcolor=(200,200,200))
-            desc_rect.center = (rect.centerx, rect.centery + 30)
-            surf.blit(desc_surf, desc_rect)
+
+            d_surf, d_rect = self.font_body.render(desc, fgcolor=(200,200,200))
+            d_rect.center  = (rect.centerx, rect.centery + 30)
+            surf.blit(d_surf, d_rect)
+
 
 def draw_bottom_overlay(surface, overlay, y_offset=0, zoom=1):
     if zoom != 1.0:
@@ -89,6 +128,7 @@ def draw_bottom_overlay(surface, overlay, y_offset=0, zoom=1):
     rect = ov.get_rect()
     rect.midbottom = (WIDTH // 2, HEIGHT + y_offset)
     surface.blit(ov, rect)
+
 
 def draw_health_globe(surface, cx, cy, radius, hp_ratio,
                       bg_color=(0,0,0,128), fg_color=(149,26,26),
@@ -100,13 +140,13 @@ def draw_health_globe(surface, cx, cy, radius, hp_ratio,
         y_start = max(int(math.ceil(level_y)), cy - radius)
         y_end   = cy + radius
         texture = pygame.transform.smoothscale(HEALTH_TEXTURE, (diameter, diameter))
-        mask = pygame.Surface((diameter, diameter), pygame.SRCALPHA)
+        mask    = pygame.Surface((diameter, diameter), pygame.SRCALPHA)
         for y in range(y_start, y_end + 1):
-            dy = y - cy
-            dx = int(math.sqrt(radius*radius - dy*dy))
-            local_y  = y - (cy - radius)
-            local_x1 = (cx - dx) - (cx - radius)
-            mask.fill((255,255,255,255), (local_x1, local_y, dx*2, 1))
+            dy      = y - cy
+            dx      = int(math.sqrt(radius*radius - dy*dy))
+            local_y = y - (cy - radius)
+            local_x = (cx - dx) - (cx - radius)
+            mask.fill((255,255,255,255), (local_x, local_y, dx*2, 1))
         masked = texture.copy()
         masked.blit(mask, (0,0), special_flags=pygame.BLEND_RGBA_MULT)
         surface.blit(masked, (cx - radius, cy - radius))
@@ -117,11 +157,6 @@ def draw_health_globe(surface, cx, cy, radius, hp_ratio,
     orn_rect  = ornament.get_rect(center=(cx, cy))
     surface.blit(ornament, orn_rect)
 
-
-import os, sys
-import pygame
-from PIL import Image
-
 def load_clean(path):
     """
     Try to pygame.load() and .convert_alpha(); if SDL_image balks,
@@ -130,13 +165,14 @@ def load_clean(path):
     try:
         return pygame.image.load(path).convert_alpha()
     except pygame.error:
-        # fallback: re‐encode with Pillow
         img = Image.open(path).convert("RGBA")
         tmp = path + ".clean.png"
         img.save(tmp)
         surf = pygame.image.load(tmp).convert_alpha()
         os.remove(tmp)
         return surf
+
+
 def show_story_slideshow(screen, clock):
     """
     Play assets/story1.png … story7.png in sequence at 80% height:
@@ -146,52 +182,47 @@ def show_story_slideshow(screen, clock):
      - FADE OUT  (transparent→black)
     Abort on any key/mouse (jumps straight out), QUIT closes.
     """
-    WIDTH, HEIGHT = screen.get_size()
-    target_h = int(HEIGHT * 0.8)
-    
-    # preload & scale all seven images
-    imgs = []
+    sw, sh    = screen.get_size()
+    target_h  = int(sh * 0.8)
+    imgs      = []
+
+    # Preload & scale each story frame
     for i in range(1, 8):
         path = os.path.join("assets", f"story{i}.png")
-        raw = load_clean(path)
-        # maintain aspect ratio
-        w = int(target_h * raw.get_width() / raw.get_height())
-        img = pygame.transform.smoothscale(raw, (w, target_h))
-        imgs.append(img)
+        raw  = load_clean(path)
+        w    = int(target_h * raw.get_width() / raw.get_height())
+        imgs.append(pygame.transform.smoothscale(raw, (w, target_h)))
 
     for img in imgs:
-        rect  = img.get_rect(center=(WIDTH//2, HEIGHT//2))
-        black = pygame.Surface((WIDTH, HEIGHT))
-        black.fill((0,0,0))
+        rect  = img.get_rect(center=(sw//2, sh//2))
+        black = pygame.Surface((sw, sh)); black.fill((0,0,0))
+        skip  = False
 
-        skip = False
-        # — FADE IN (alpha 255→0) —
+        # FADE IN (alpha 255→0)
         for alpha in range(255, -1, -15):
             for e in pygame.event.get():
                 if e.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN, pygame.QUIT):
                     if e.type == pygame.QUIT:
                         pygame.quit(); sys.exit()
-                    skip = True
-                    break
+                    skip = True; break
             if skip: break
 
             black.set_alpha(alpha)
             screen.fill((0,0,0))
-            screen.blit(img,  rect)
+            screen.blit(img, rect)
             screen.blit(black, (0,0))
             pygame.display.flip()
             clock.tick(60)
         if skip: break
 
-        # — HOLD (3 seconds) —
+        # HOLD 3s (or until input)
         start = pygame.time.get_ticks()
-        while pygame.time.get_ticks() - start < 3000:
+        while pygame.time.get_ticks() - start < 3000 and not skip:
             for e in pygame.event.get():
                 if e.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN, pygame.QUIT):
                     if e.type == pygame.QUIT:
                         pygame.quit(); sys.exit()
-                    skip = True
-                    break
+                    skip = True; break
             if skip: break
             screen.fill((0,0,0))
             screen.blit(img, rect)
@@ -199,49 +230,45 @@ def show_story_slideshow(screen, clock):
             clock.tick(30)
         if skip: break
 
-        # — FADE OUT (alpha 0→255) —
+        # FADE OUT (alpha 0→255)
         for alpha in range(0, 256, 15):
             for e in pygame.event.get():
                 if e.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN, pygame.QUIT):
                     if e.type == pygame.QUIT:
                         pygame.quit(); sys.exit()
-                    skip = True
-                    break
+                    skip = True; break
             if skip: break
 
             black.set_alpha(alpha)
             screen.fill((0,0,0))
-            screen.blit(img,  rect)
+            screen.blit(img, rect)
             screen.blit(black, (0,0))
             pygame.display.flip()
             clock.tick(60)
         if skip: break
 
-    # at exit, control returns to caller
 
 def show_touches_screen(screen, clock):
     """
-    Very similar fade‐in → wait → fade‐out for TOUCHES_IMG_PATH,
-    but also render the Cinzel key‐binding text over top.
+    Fade-in → wait for key/mouse → fade-out for TOUCHES_IMG,
+    plus overlay the Cinzel key-binding text.
     """
-    WIDTH, HEIGHT = screen.get_size()
+    sw, sh  = screen.get_size()
     img     = load_clean(TOUCHES_IMG_PATH)
-    img_rect= img.get_rect(center=(WIDTH//2, HEIGHT//2))
-    black   = pygame.Surface((WIDTH, HEIGHT))
-    black.fill((0,0,0))
+    img_rect= img.get_rect(center=(sw//2, sh//2))
+    black   = pygame.Surface((sw, sh)); black.fill((0,0,0))
 
-    # prepare Cinzel
+    # Prepare Cinzel text
     font_path = os.path.join("assets","fonts","Cinzel","static","Cinzel-Regular.ttf")
     font_size = 36
     font      = pygame.font.Font(font_path, font_size)
     lines     = ["Se déplacer : ZQSD", "Dash : ESPACE", "Cri : Clique droit"]
     spacing   = 10
     total_h   = len(lines)*font_size + (len(lines)-1)*spacing
-    y_start   = HEIGHT//2 - total_h//2
+    y_start   = sh//2 - total_h//2
 
     # FADE IN
     for alpha in range(255, -1, -5):
-        # abort on input
         for e in pygame.event.get():
             if e.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN, pygame.QUIT):
                 if e.type == pygame.QUIT:
@@ -250,11 +277,10 @@ def show_touches_screen(screen, clock):
         black.set_alpha(alpha)
         screen.fill((0,0,0))
         screen.blit(img, img_rect)
-        # draw text
         for i, txt in enumerate(lines):
             surf = font.render(txt, True, (255,255,255))
-            r    = surf.get_rect(center=(WIDTH//2,
-                             y_start + i*(font_size+spacing) + font_size//2))
+            r    = surf.get_rect(center=(sw//2,
+                           y_start + i*(font_size+spacing) + font_size//2))
             screen.blit(surf, r)
         screen.blit(black, (0,0))
         pygame.display.flip()
@@ -267,14 +293,13 @@ def show_touches_screen(screen, clock):
             if e.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN, pygame.QUIT):
                 if e.type == pygame.QUIT:
                     pygame.quit(); sys.exit()
-                waiting = False
-                break
+                waiting = False; break
         screen.fill((0,0,0))
         screen.blit(img, img_rect)
         for i, txt in enumerate(lines):
             surf = font.render(txt, True, (255,255,255))
-            r    = surf.get_rect(center=(WIDTH//2,
-                             y_start + i*(font_size+spacing) + font_size//2))
+            r    = surf.get_rect(center=(sw//2,
+                           y_start + i*(font_size+spacing) + font_size//2))
             screen.blit(surf, r)
         pygame.display.flip()
         clock.tick(30)
@@ -291,12 +316,64 @@ def show_touches_screen(screen, clock):
         screen.blit(img, img_rect)
         for i, txt in enumerate(lines):
             surf = font.render(txt, True, (255,255,255))
-            r    = surf.get_rect(center=(WIDTH//2,
-                             y_start + i*(font_size+spacing) + font_size//2))
+            r    = surf.get_rect(center=(sw//2,
+                           y_start + i*(font_size+spacing) + font_size//2))
             screen.blit(surf, r)
         screen.blit(black, (0,0))
         pygame.display.flip()
         clock.tick(60)
+
+
+# game/main.py
+import pygame
+
+def handle_scream_input(event, player, enemy_list, mages, cam_x, cam_y):
+    """
+    Gère un event pygame pour déclencher le cri :
+    - si event est KEYDOWN et key == K_c, ou clic droit -> player.scream
+    """
+    if event.type == pygame.KEYDOWN and event.key == pygame.K_c:
+        mx, my = pygame.mouse.get_pos()
+        player.scream(enemy_list, mages, (mx+cam_x, my+cam_y))
+        return True
+    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+        mx, my = pygame.mouse.get_pos()
+        player.scream(enemy_list, mages, (mx+cam_x, my+cam_y))
+        return True
+    return False
+
+
+def draw_scream_cooldown(screen, player):
+    """
+    Display the scream icon centered horizontally,
+    100px from the bottom, with a gray border while on cooldown,
+    and a green border when ready.
+    """
+    icon, icon_gray, font_small = get_cri_icons()
+    sw, sh   = screen.get_size()
+    # position centrée :
+    x        = sw // 2 - ICON_SIZE // 2
+    y        = sh - 50 - ICON_SIZE
+
+    # Choix de l'icône et de la couleur de bordure
+    ready = (player.scream_timer <= 0)
+    to_draw = icon if ready else icon_gray
+    border_color = (0, 255, 0) if ready else (150, 150, 150)
+
+    # Dessiner le contour avec la couleur appropriée
+    border_rect = pygame.Rect(x - 2, y - 2, ICON_SIZE + 4, ICON_SIZE + 4)
+    pygame.draw.rect(screen, border_color, border_rect, border_radius=4)
+
+    # Afficher l’icône du cri
+    screen.blit(to_draw, (x, y))
+
+    # Si en cooldown, afficher le timer
+    if not ready:
+        text = f"{player.scream_timer:.1f}"
+        surf = font_small.render(text, True, (255,255,255))
+        rect = surf.get_rect(midbottom=(x + ICON_SIZE//2, y - 2))
+        screen.blit(surf, rect)
+
 
 def main():
     pygame.init()
@@ -306,20 +383,21 @@ def main():
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Reincarnation of the unkillable last human against all gods")
 
+    # now that display is ready, you can safely call get_cri_icons() once
+    get_cri_icons()
+
     # timers
     screen_flash_timer = 0.0
     FLASH_DURATION     = 0.08
     HIT_FLASH_DURATION = 0.05
 
-    # pour afficher le flash sur boss uniquement
-# pour afficher le flash sur boss uniquement
     hit_flash_timer  = 0.0
-    hit_flash_target = None     # ce sera l’instance Boss touchée
+    hit_flash_target = None
 
     global HEALTH_ORNAMENT, HEALTH_TEXTURE
-    bottom_overlay  = pygame.image.load("assets/bottom_overlay.png").convert_alpha()
-    HEALTH_ORNAMENT = pygame.image.load("assets/health_orb_ornement.png").convert_alpha()
-    HEALTH_TEXTURE  = pygame.image.load("assets/health_texture.png").convert_alpha()
+    bottom_overlay   = pygame.image.load("assets/bottom_overlay.png").convert_alpha()
+    HEALTH_ORNAMENT  = pygame.image.load("assets/health_orb_ornement.png").convert_alpha()
+    HEALTH_TEXTURE   = pygame.image.load("assets/health_texture.png").convert_alpha()
 
     overlay_y_offset = 335
     overlay_zoom     = 0.9
@@ -329,16 +407,16 @@ def main():
     pygame.mixer.music.set_volume(0.5)
     pygame.mixer.music.play(-1, fade_ms=2000)
 
-    main_menu     = True
-    raw_menu      = pygame.image.load("assets/main_menu.png").convert()
-    main_menu_img = pygame.transform.scale(raw_menu, (WIDTH, HEIGHT))
-    play_button_rect = pygame.Rect(WIDTH//2 - 210, HEIGHT//2 + 50, 350, 120)
+    main_menu       = True
+    raw_menu        = pygame.image.load("assets/main_menu.png").convert()
+    main_menu_img   = pygame.transform.scale(raw_menu, (WIDTH, HEIGHT))
+    play_button_rect= pygame.Rect(WIDTH//2 - 210, HEIGHT//2 + 50, 350, 120)
 
-    BONUS_SIZE  = 64
-    bg_img      = pygame.image.load("assets/background.png").convert()
-    bg_w, bg_h  = bg_img.get_size()
-    magnet_raw  = pygame.image.load("assets/magnet.png").convert_alpha()
-    magnet_img  = pygame.transform.smoothscale(magnet_raw, (BONUS_SIZE, BONUS_SIZE))
+    BONUS_SIZE      = 64
+    bg_img          = pygame.image.load("assets/background.png").convert()
+    bg_w, bg_h      = bg_img.get_size()
+    magnet_raw      = pygame.image.load("assets/magnet.png").convert_alpha()
+    magnet_img      = pygame.transform.smoothscale(magnet_raw, (BONUS_SIZE, BONUS_SIZE))
 
     player     = Player(MAP_WIDTH // 2, MAP_HEIGHT // 2)
     enemy_list = []
@@ -354,7 +432,7 @@ def main():
         (OFFSET, MAP_HEIGHT - BONUS_SIZE - OFFSET),
         (MAP_WIDTH - BONUS_SIZE - OFFSET, MAP_HEIGHT - BONUS_SIZE - OFFSET),
     ]
-    current_bonus = None
+    current_bonus       = None
 
     spawn_timer         = 0.0
     base_spawn_interval = 3.0
@@ -370,8 +448,6 @@ def main():
     fade_in_dur          = 0.5
     fade_out_dur         = 1.0
     upgrade_resume_timer = 0.0
-
-
 
 
     while True:
@@ -426,21 +502,26 @@ def main():
                 xp_orbs.clear()
                 boss_list.clear()
                 player.__init__(MAP_WIDTH // 2, MAP_HEIGHT // 2)
+                cam_x = max(0, min(player.rect.centerx - WIDTH//2, MAP_WIDTH  - WIDTH))
+                cam_y = max(0, min(player.rect.centery  - HEIGHT//2, MAP_HEIGHT - HEIGHT))
 
             continue
 
-            if not main_menu and not game_over and not upgrade_active:
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_c:
-                    mx, my = pygame.mouse.get_pos()
-                    player.scream(enemy_list, mages, (mx+cam_x, my+cam_y))
-
-            if upgrade_active and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                for key, rect in zip(upgrade_menu.choices, upgrade_menu.rects):
-                    if rect.collidepoint(event.pos):
-                        player.apply_upgrade(key)
-                        upgrade_active       = False
-                        upgrade_resume_timer = 0.7
-                        break
+        if not main_menu and not game_over and not upgrade_active:
+            # on délègue au helper
+            if handle_scream_input(event, player, enemy_list, mages, cam_x, cam_y):
+                pass
+                 # ou juste passer à la suite
+        if upgrade_active and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            for key, rect in zip(upgrade_menu.choices, upgrade_menu.rects):
+                if rect.collidepoint(event.pos):
+                    # applique tout de suite l'amélioration
+                    player.apply_upgrade(key)
+                    # on coupe le menu et on force le fade-out
+                    upgrade_active = False
+                    upgrade_fade   = fade_in_dur    # démarrer le fondu sortant
+                    upgrade_resume_timer = 0.7
+                    break
 
         if upgrade_resume_timer > 0:
             upgrade_resume_timer -= dt
@@ -648,15 +729,19 @@ def main():
         FONT_HUD=pygame.freetype.Font("assets/fonts/Cinzel-Regular.ttf",24)
         ts,tr=FONT_HUD.render(f"Level: {player.level}",fgcolor=(255,255,255))
         tr.midtop=(WIDTH//2,by+bar_h+5); screen.blit(ts,tr)
+        draw_scream_cooldown(screen, player)
 
-        if upgrade_active or (not player.new_level and upgrade_fade>0):
+        if upgrade_active or upgrade_fade > 0:
+            # on augmente fade si on vient d'ouvrir, sinon on diminue
             if upgrade_active:
-                upgrade_fade=min(upgrade_fade+dt,fade_in_dur)
+                upgrade_fade = min(upgrade_fade + dt, fade_in_dur)
+                show_cards  = True
             else:
-                upgrade_fade=max(upgrade_fade-dt,0)
-            alpha=int(255*(upgrade_fade/fade_in_dur))
-            upgrade_menu.draw(screen,alpha)
-
+                upgrade_fade = max(upgrade_fade - dt, 0)
+                show_cards  = False
+            alpha = int(255 * (upgrade_fade / fade_in_dur))
+            # ne dessine les cartes qu'en phase de fade-in (upgrade_active=True)
+            upgrade_menu.draw(screen, alpha, show_cards)
         if game_over:
             screen.fill((0,0,0))
             f1=pygame.font.Font(None,72); f2=pygame.font.Font(None,48)

@@ -7,7 +7,13 @@ from .settings import MAP_WIDTH, MAP_HEIGHT
 
 class Player:
     def __init__(self, x, y):
-        # — Sons —
+
+        if not pygame.display.get_init():
+            pygame.display.init()
+            pygame.display.set_mode((1,1))
+
+        if pygame.mixer.get_init() is None:
+            pygame.mixer.init()
         self.attack_sound   = pygame.mixer.Sound(os.path.join("fx", "attack.mp3"))
         self.levelup_sound  = pygame.mixer.Sound(os.path.join("fx", "levelup.mp3"))
         self.scream_sound   = pygame.mixer.Sound(os.path.join("fx", "eagle_scream.mp3"))
