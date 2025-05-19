@@ -4,6 +4,7 @@ import pygame
 import math
 import os
 from .settings import MAP_WIDTH, MAP_HEIGHT
+from .utils import resource_path
 class Enemy:
     LIFESPAN = 40.0  # secondes
 
@@ -13,9 +14,8 @@ class Enemy:
 
         # Charger sprites droite/gauche
         base = os.path.join("assets", "gobelin")
-        img_r = pygame.image.load(base + "-right.png").convert_alpha()
-        img_l = pygame.image.load(base + "-left.png").convert_alpha()
-
+        img_r = pygame.image.load(resource_path(base + "-right.png")).convert_alpha()
+        img_l = pygame.image.load(resource_path(base + "-left.png")).convert_alpha()
         # Sprite scaling
         sprite_scale = 1.3 if tier != 'normal' else 1.0
         size = (int(80 * sprite_scale), int(80 * sprite_scale))

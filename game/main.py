@@ -14,6 +14,7 @@ from .xp_orb import XPOrb
 from .goblin_mage import GoblinMage
 from .boss import Boss
 from PIL import Image
+from .utils import resource_path
 
 from .settings import WIDTH, HEIGHT   # ou votre constante de chemin
 
@@ -39,7 +40,7 @@ def get_cri_icons():
     global CRI_ICON, CRI_ICON_GRAY, FONT_SMALL
     if CRI_ICON is None:
         # 1) Load & scale the color icon
-        raw = pygame.image.load(CRI_ICON_PATH).convert_alpha()
+        raw = pygame.image.load(resource_path(CRI_ICON_PATH)).convert_alpha()
         CRI_ICON = pygame.transform.scale(raw, (ICON_SIZE, ICON_SIZE))
         # 2) Build grayscale version
         CRI_ICON_GRAY = pygame.Surface((ICON_SIZE, ICON_SIZE), pygame.SRCALPHA)
@@ -54,7 +55,7 @@ def get_cri_icons():
         surfarray.blit_array(CRI_ICON_GRAY, gray_arr)
         # 3) Load a small Font for cooldown text
         FONT_SMALL = pygame.font.Font(
-            os.path.join("assets", "fonts", "Cinzel", "static", "Cinzel-Regular.ttf"),
+            resource_path("assets/fonts/Cinzel/static/Cinzel-Regular.ttf"),
             20
         )
     return CRI_ICON, CRI_ICON_GRAY, FONT_SMALL
@@ -76,11 +77,17 @@ class UpgradeMenu:
     def __init__(self):
         self.choices  = []
         self.rects    = []
-        self.card_img = pygame.image.load("assets/upgrade_card.png").convert_alpha()
+        self.card_img = pygame.image.load(resource_path("assets/upgrade_card.png")).convert_alpha()
         self.btn_w, self.btn_h = self.card_img.get_size()
         self.margin        = 20
-        self.font_title    = pygame.freetype.Font("assets/fonts/Cinzel-Regular.ttf", 24)
-        self.font_body     = pygame.freetype.Font("assets/fonts/Cinzel-Regular.ttf", 16)
+        self.font_title = pygame.freetype.Font(
+            resource_path("assets/fonts/Cinzel/static/Cinzel-Regular.ttf"),
+            24
+        )
+        self.font_body = pygame.freetype.Font(
+            resource_path("assets/fonts/Cinzel/static/Cinzel-Regular.ttf"),
+            16
+        )
 
     def open(self):
         self.choices = random.sample(Player.UPGRADE_KEYS, 3)
@@ -163,12 +170,14 @@ def load_clean(path):
     re-save via Pillow as 8-bit RGBA, load that, then delete temp.
     """
     try:
-        return pygame.image.load(path).convert_alpha()
+        return pygame.image.load(resource_path(path)).convert_alpha()
+
     except pygame.error:
         img = Image.open(path).convert("RGBA")
         tmp = path + ".clean.png"
         img.save(tmp)
-        surf = pygame.image.load(tmp).convert_alpha()
+        surf = pygame.image.load(resource_path(tmp)).convert_alpha()
+
         os.remove(tmp)
         return surf
 
@@ -261,7 +270,10 @@ def show_touches_screen(screen, clock):
     # Prepare Cinzel text
     font_path = os.path.join("assets","fonts","Cinzel","static","Cinzel-Regular.ttf")
     font_size = 36
-    font      = pygame.font.Font(font_path, font_size)
+    font = pygame.font.Font(
+        resource_path("assets/fonts/Cinzel/static/Cinzel-Regular.ttf"),
+        font_size
+    )
     lines     = ["Se déplacer : ZQSD", "Dash : ESPACE", "Cri : Clique droit"]
     spacing   = 10
     total_h   = len(lines)*font_size + (len(lines)-1)*spacing
@@ -395,27 +407,31 @@ def main():
     hit_flash_target = None
 
     global HEALTH_ORNAMENT, HEALTH_TEXTURE
-    bottom_overlay   = pygame.image.load("assets/bottom_overlay.png").convert_alpha()
-    HEALTH_ORNAMENT  = pygame.image.load("assets/health_orb_ornement.png").convert_alpha()
-    HEALTH_TEXTURE   = pygame.image.load("assets/health_texture.png").convert_alpha()
+    bottom_overlay   = pygame.image.load(resource_path("assets/bottom_overlay.png")).convert_alpha()
+    HEALTH_ORNAMENT  = pygame.image.load(resource_path("assets/health_orb_ornement.png")).convert_alpha()
+    HEALTH_TEXTURE   = pygame.image.load(resource_path("assets/health_texture.png")).convert_alpha()
 
     overlay_y_offset = 335
     overlay_zoom     = 0.9
 
     clock = pygame.time.Clock()
-    pygame.mixer.music.load(os.path.join("fx", "background_music.mp3"))
+    pygame.mixer.music.load(resource_path("fx/background_music.mp3"))
+
     pygame.mixer.music.set_volume(0.5)
     pygame.mixer.music.play(-1, fade_ms=2000)
 
     main_menu       = True
-    raw_menu        = pygame.image.load("assets/main_menu.png").convert()
+    raw_menu = pygame.image.load(resource_path("assets/main_menu.png")).convert()
+
     main_menu_img   = pygame.transform.scale(raw_menu, (WIDTH, HEIGHT))
     play_button_rect= pygame.Rect(WIDTH//2 - 210, HEIGHT//2 + 50, 350, 120)
 
     BONUS_SIZE      = 64
-    bg_img          = pygame.image.load("assets/background.png").convert()
+    bg_img = pygame.image.load(resource_path("assets/background.png")).convert()
+
     bg_w, bg_h      = bg_img.get_size()
-    magnet_raw      = pygame.image.load("assets/magnet.png").convert_alpha()
+    magnet_raw = pygame.image.load(resource_path("assets/magnet.png")).convert_alpha()
+
     magnet_img      = pygame.transform.smoothscale(magnet_raw, (BONUS_SIZE, BONUS_SIZE))
 
     player     = Player(MAP_WIDTH // 2, MAP_HEIGHT // 2)
@@ -726,7 +742,11 @@ def main():
         pygame.draw.rect(screen,(50,50,50),(bx,by,bar_w,bar_h))
         pygame.draw.rect(screen,(200,200,0),(bx,by,int(bar_w*xr),bar_h))
         pygame.draw.rect(screen,(255,255,255),(bx,by,bar_w,bar_h),2)
-        FONT_HUD=pygame.freetype.Font("assets/fonts/Cinzel-Regular.ttf",24)
+        FONT_HUD = pygame.freetype.Font(
+            resource_path("assets/fonts/Cinzel/static/Cinzel-Regular.ttf"),
+            24
+        )
+
         ts,tr=FONT_HUD.render(f"Level: {player.level}",fgcolor=(255,255,255))
         tr.midtop=(WIDTH//2,by+bar_h+5); screen.blit(ts,tr)
         draw_scream_cooldown(screen, player)

@@ -5,11 +5,12 @@ import math
 import pygame
 from .settings import MAP_WIDTH, MAP_HEIGHT, WIDTH, HEIGHT
 from .projectile import Fireball
+from .utils import resource_path
 
 class GoblinMage:
     def __init__(self, x, y):
         # — Charger & scaler le sprite du mage —
-        raw = pygame.image.load(os.path.join("assets", "gobelin_mage.png")).convert_alpha()
+        raw = pygame.image.load(resource_path("assets/gobelin_mage.png")).convert_alpha()
         scale_factor = 0.18  # ajustez pour plus petit ou plus grand
         iw, ih = raw.get_size()
         sw, sh = int(iw * scale_factor), int(ih * scale_factor)

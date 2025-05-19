@@ -1,12 +1,14 @@
 import pygame
 import math
 import os
+from .utils import resource_path
 
 class XPOrb:
     def __init__(self, x, y, value):
         self.value = value
-        pickup_path = os.path.join("fx", "xp_orb.mp3")
+        pickup_path = resource_path("fx/xp_orb.mp3")
         self.pickup_sound = pygame.mixer.Sound(pickup_path)
+
 
         self.image = pygame.Surface((16, 16), pygame.SRCALPHA)
         pygame.draw.circle(self.image, (255, 215, 0), (8, 8), 8)

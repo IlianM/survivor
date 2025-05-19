@@ -4,6 +4,7 @@ import pygame
 import math
 import os
 from .settings import MAP_WIDTH, MAP_HEIGHT
+from .utils import resource_path
 
 class Player:
     def __init__(self, x, y):
@@ -14,9 +15,10 @@ class Player:
 
         if pygame.mixer.get_init() is None:
             pygame.mixer.init()
-        self.attack_sound   = pygame.mixer.Sound(os.path.join("fx", "attack.mp3"))
-        self.levelup_sound  = pygame.mixer.Sound(os.path.join("fx", "levelup.mp3"))
-        self.scream_sound   = pygame.mixer.Sound(os.path.join("fx", "eagle_scream.mp3"))
+        self.attack_sound  = pygame.mixer.Sound(resource_path("fx/attack.mp3"))
+        self.levelup_sound = pygame.mixer.Sound(resource_path("fx/levelup.mp3"))
+        self.scream_sound  = pygame.mixer.Sound(resource_path("fx/eagle_scream.mp3"))
+
 
         # — Sprites & animation —
         horz_height = 128
@@ -25,7 +27,7 @@ class Player:
         # droite (3 frames)
         self.walk_frames_right = []
         for i in range(1, 4):
-            img = pygame.image.load(f"assets/knight{i}.png").convert_alpha()
+            img = pygame.image.load(resource_path(f"assets/knight{i}.png")).convert_alpha()
             ow, oh = img.get_size()
             scale = horz_height / oh
             nw = int(ow * scale)
@@ -35,7 +37,7 @@ class Player:
         # haut (2 frames)
         self.up_frames = []
         for i in range(1, 3):
-            img = pygame.image.load(f"assets/knight_up{i}.png").convert_alpha()
+            img = pygame.image.load(resource_path(f"assets/knight_up{i}.png")).convert_alpha()
             ow, oh = img.get_size()
             scale = vert_height / oh
             nw = int(ow * scale)
@@ -44,7 +46,8 @@ class Player:
         # bas (2 frames)
         self.down_frames = []
         for i in range(1, 3):
-            img = pygame.image.load(f"assets/knightdown_{i}.png").convert_alpha()
+            img = pygame.image.load(resource_path(f"assets/knightdown_{i}.png")).convert_alpha()
+
             ow, oh = img.get_size()
             scale = vert_height / oh
             nw = int(ow * scale)
@@ -80,7 +83,8 @@ class Player:
         self.last_attack_angle   = 0
 
         # slash visuel
-        raw = pygame.image.load(os.path.join("assets", "slash.png")).convert_alpha()
+        raw = pygame.image.load(resource_path("assets/slash.png")).convert_alpha()
+
         self.raw_slash   = raw
         self.slash_scale = 0.15
 
