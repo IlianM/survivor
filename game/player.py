@@ -4,6 +4,9 @@ import pygame
 import math
 import os
 from .settings import MAP_WIDTH, MAP_HEIGHT
+from .balance_manager import balance
+from .settings_manager import settings
+from .audio_manager import audio_manager
 
 class Player:
     def __init__(self, x, y):
@@ -14,9 +17,11 @@ class Player:
 
         if pygame.mixer.get_init() is None:
             pygame.mixer.init()
-        self.attack_sound   = pygame.mixer.Sound(os.path.join("fx", "attack.mp3"))
-        self.levelup_sound  = pygame.mixer.Sound(os.path.join("fx", "levelup.mp3"))
-        self.scream_sound   = pygame.mixer.Sound(os.path.join("fx", "eagle_scream.mp3"))
+        
+        # Charger les sons via le gestionnaire audio
+        audio_manager.load_sound("attack", os.path.join("fx", "attack.mp3"))
+        audio_manager.load_sound("levelup", os.path.join("fx", "levelup.mp3"))
+        audio_manager.load_sound("scream", os.path.join("fx", "eagle_scream.mp3"))
 
         # — Sprites & animation —
         horz_height = 128
@@ -63,17 +68,17 @@ class Player:
         self.offset_down   = 15
 
         # stats
-        self.speed   = 150
-        self.max_hp  = 10
+        self.speed   = balance.get_player_stats().get("speed", 150)
+        self.max_hp  = balance.get_player_stats().get("max_hp", 10)
         self.hp      = self.max_hp
-        self.regen_rate = 0.2
+        self.regen_rate = balance.get_player_stats().get("regen_rate", 0.2)
 
         # attaque
-        self.attack_range        = 150
-        self.attack_cooldown     = 1.0
-        self.attack_angle        = 90
+        self.attack_range        = balance.get_player_stats().get("attack_range", 150)
+        self.attack_cooldown     = balance.get_player_stats().get("attack_cooldown", 1.0)
+        self.attack_angle        = balance.get_player_stats().get("attack_angle", 90)
         self.attack_timer        = 0.0
-        self.attack_damage       = 3
+        self.attack_damage       = balance.get_player_stats().get("attack_damage", 3)
         self.attacking           = False
         self.attack_duration     = 0.2
         self.attack_timer_visual = 0.0
@@ -96,38 +101,37 @@ class Player:
         self.auto_attack = True
 
         # dash
-        self.dash_cooldown  = 4.0
+        dash_stats = balance.get_player_stats().get("dash", {})
+        self.dash_cooldown  = dash_stats.get("cooldown", 4.0)
         self.dash_timer     = 0.0
-        self.dash_duration  = 0.2
+        self.dash_duration  = dash_stats.get("duration", 0.2)
         self.dash_time_left = 0.0
-        self.dash_speed     = 800
+        self.dash_speed     = dash_stats.get("speed", 800)
         self.dash_dir       = (0, 0)
 
         # cri
-        self.scream_cooldown      = 10.0
+        scream_stats = balance.get_player_stats().get("scream", {})
+        self.scream_cooldown      = scream_stats.get("cooldown", 10.0)
         self.scream_timer         = 0.0
-        self.scream_damage        = 4
-        self.scream_range         = self.attack_range * 3
-        self.scream_slow_duration = 3.0
+        self.scream_damage        = scream_stats.get("damage", 4)
+        self.scream_range         = self.attack_range * scream_stats.get("range_multiplier", 3)
+        self.scream_slow_duration = scream_stats.get("slow_duration", 3.0)
         self.scream_slow_factor   = 0.6
-
 
         self.scream_cone_duration = self.scream_slow_duration
         self.scream_cone_timer    = 0.0
         self.show_scream_cone     = False
 
-
         # Aimant
         self.magnet_active   = False
         self.magnet_timer    = 0.0
-        self.magnet_duration = 8.0   # durée de l’effet en secondes
+        self.magnet_duration = 8.0   # durée de l'effet en secondes
 
         # affichage du cône
         self.show_scream_cone   = False
         self.scream_cone_timer  = 0.0
         self.scream_angle       = 0.0
 
-# player.py (extrait)
     def update(self, keys, dt):
         # — Régénération passive —
         self.hp = min(self.hp + self.regen_rate * dt, self.max_hp)
@@ -155,14 +159,19 @@ class Player:
         # 2) dash en cours
         if self.dash_time_left > 0:
             self.dash_time_left -= dt
-            self.rect.x += self.dash_dir[0] * self.dash_speed * dt
-            self.rect.y += self.dash_dir[1] * self.dash_speed * dt
+            # Calcul du déplacement en dash avec conversion entière
+            dash_move_x = self.dash_dir[0] * self.dash_speed * dt
+            dash_move_y = self.dash_dir[1] * self.dash_speed * dt
+            
+            self.rect.x = int(self.rect.x + dash_move_x)
+            self.rect.y = int(self.rect.y + dash_move_y)
+            
             # clamp X et Y
             self.rect.x = max(0, min(self.rect.x, MAP_WIDTH  - self.rect.width))
             self.rect.y = max(0, min(self.rect.y, MAP_HEIGHT - self.rect.height))
             return
 
-        # 3) lecture des touches
+        # 3) lecture des touches avec keybinds configurables
         dx = dy = 0
         def keydown(k):
             if hasattr(keys, "get"):
@@ -172,13 +181,20 @@ class Player:
             except Exception:
                 return False
 
-        if keydown(pygame.K_z): dy -= 1
-        if keydown(pygame.K_s): dy += 1
-        if keydown(pygame.K_q): dx -= 1
-        if keydown(pygame.K_d): dx += 1
+        # Utiliser les keybinds configurables
+        move_up_key = settings.get_keybind("move_up")
+        move_down_key = settings.get_keybind("move_down")
+        move_left_key = settings.get_keybind("move_left")
+        move_right_key = settings.get_keybind("move_right")
+        dash_key = settings.get_keybind("dash")
 
-        # 4) dash déclenché
-        if keydown(pygame.K_SPACE) and self.dash_timer <= 0:
+        if keydown(move_up_key): dy -= 1
+        if keydown(move_down_key): dy += 1
+        if keydown(move_left_key): dx -= 1
+        if keydown(move_right_key): dx += 1
+
+        # 4) dash déclenché avec keybind configurable
+        if keydown(dash_key) and self.dash_timer <= 0:
             if dx or dy:
                 self.dash_dir = (dx, dy)
             else:
@@ -238,13 +254,13 @@ class Player:
     def attack(self, enemies, mouse_pos):
         if not self.can_attack():
             return
-        # joue le son et initialise visuel & cooldown
-        self.attack_sound.play()
+        # joue le son via le gestionnaire audio
+        audio_manager.play_sound("attack")
         self.attacking           = True
         self.attack_timer        = 0
         self.attack_timer_visual = self.attack_duration
 
-        # calcule l’angle de l’attaque
+        # calcule l'angle de l'attaque
         dxm = mouse_pos[0] - self.rect.centerx
         dym = mouse_pos[1] - self.rect.centery
         angle = math.degrees(math.atan2(-dym, dxm)) % 360
@@ -259,11 +275,11 @@ class Player:
             r = e.rect.width / 2
             # si dans la portée
             if dist - r <= self.attack_range:
-                # calcule l’angle joueur→ennemi
+                # calcule l'angle joueur→ennemi
                 a2e = math.degrees(math.atan2(-dye, dxe)) % 360
                 delta = abs((angle - a2e + 180) % 360 - 180)
                 if delta <= half:
-                    # si l’ennemi implémente take_damage(), on l’appelle
+                    # si l'ennemi implémente take_damage(), on l'appelle
                     if hasattr(e, "take_damage"):
                         e.take_damage(self.attack_damage)
                     else:
@@ -311,13 +327,19 @@ class Player:
             self.level_up()
 
     def level_up(self):
+        # NOUVEAU: Utiliser les valeurs de progression du balance manager
+        progression_config = balance.config.get("progression", {})
+        
         self.level += 1
-        self.next_level_xp = int(self.next_level_xp * 1.18)
+        level_xp_multiplier = progression_config.get("level_xp_multiplier", 1.18)
+        self.next_level_xp = int(self.next_level_xp * level_xp_multiplier)
         self.new_level     = True
-        self.levelup_sound.play()
-        self.attack_damage += 1.2
+        audio_manager.play_sound("levelup")
+        
+        damage_per_level = progression_config.get("damage_per_level", 1.2)
+        self.attack_damage += damage_per_level
 
-    # pool d’améliorations
+    # pool d'améliorations
     UPGRADE_KEYS = [
         "Strength Boost", "Vitality Surge", "Quick Reflexes",
         "Haste", "Extended Reach", "XP Bonus"
@@ -332,19 +354,28 @@ class Player:
     }
 
     def apply_upgrade(self, key):
+        # NOUVEAU: Utiliser les valeurs du balance manager
+        upgrades_config = balance.config.get("upgrades", {})
+        
         if key == "Strength Boost":
-            self.attack_damage += 3
+            value = upgrades_config.get("strength_boost", {}).get("value", 3)
+            self.attack_damage += value
         elif key == "Vitality Surge":
-            self.max_hp += 5
-            self.hp     += 5
+            value = upgrades_config.get("vitality_surge", {}).get("value", 5)
+            self.max_hp += value
+            self.hp     += value
         elif key == "Quick Reflexes":
-            self.attack_cooldown *= 0.85
+            value = upgrades_config.get("quick_reflexes", {}).get("value", 0.85)
+            self.attack_cooldown *= value
         elif key == "Haste":
-            self.speed += 30
+            value = upgrades_config.get("haste", {}).get("value", 30)
+            self.speed += value
         elif key == "Extended Reach":
-            self.attack_range += 30
+            value = upgrades_config.get("extended_reach", {}).get("value", 30)
+            self.attack_range += value
         elif key == "XP Bonus":
-            self.xp_bonus += 0.25
+            value = upgrades_config.get("xp_bonus", {}).get("value", 0.25)
+            self.xp_bonus += value
 
 
     def apply_bonus(self, bonus_type):
@@ -390,3 +421,39 @@ class Player:
             px     = self.rect.centerx + dx_off - sw//2 - cam_x
             py     = self.rect.centery  + dy_off - sh//2 - cam_y + y_off
             surface.blit(slash, (px, py))
+
+    def refresh_balance_stats(self):
+        """Rafraîchit les stats du joueur depuis le balance manager.
+        Appelé quand les valeurs changent via le menu d'équilibrage."""
+        player_stats = balance.get_player_stats()
+        
+        # Stats de base
+        self.speed = player_stats.get("speed", 150)
+        old_max_hp = self.max_hp
+        self.max_hp = player_stats.get("max_hp", 10)
+        
+        # Ajuster les HP actuels proportionnellement si max_hp change
+        if old_max_hp != self.max_hp and old_max_hp > 0:
+            hp_ratio = self.hp / old_max_hp
+            self.hp = min(self.max_hp, hp_ratio * self.max_hp)
+        
+        self.regen_rate = player_stats.get("regen_rate", 0.2)
+        
+        # Stats d'attaque
+        self.attack_range = player_stats.get("attack_range", 150)
+        self.attack_cooldown = player_stats.get("attack_cooldown", 1.0)
+        self.attack_angle = player_stats.get("attack_angle", 90)
+        self.attack_damage = player_stats.get("attack_damage", 3)
+        
+        # Stats de dash
+        dash_stats = player_stats.get("dash", {})
+        self.dash_cooldown = dash_stats.get("cooldown", 4.0)
+        self.dash_duration = dash_stats.get("duration", 0.2)
+        self.dash_speed = dash_stats.get("speed", 800)
+        
+        # Stats de scream
+        scream_stats = player_stats.get("scream", {})
+        self.scream_cooldown = scream_stats.get("cooldown", 10.0)
+        self.scream_damage = scream_stats.get("damage", 4)
+        self.scream_range = self.attack_range * scream_stats.get("range_multiplier", 3)
+        self.scream_slow_duration = scream_stats.get("slow_duration", 3.0)

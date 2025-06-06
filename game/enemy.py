@@ -4,6 +4,8 @@ import pygame
 import math
 import os
 from .settings import MAP_WIDTH, MAP_HEIGHT
+from .balance_manager import balance
+
 class Enemy:
     LIFESPAN = 40.0  # secondes
 
@@ -24,19 +26,25 @@ class Enemy:
         self.image     = self.img_right
         self.rect      = self.image.get_rect(center=(x, y))
 
-        # HP scaling
+        # NOUVEAU: HP scaling depuis balance.json
+        scaling_config = balance.config.get("scaling", {})
+        enemy_progression = scaling_config.get("enemy_progression", {})
+        
         if tier == 'elite':
-            hp_scale = 9.0
+            hp_scale = enemy_progression.get("elite_hp_multiplier", 9.0)
         elif tier == 'rare':
-            hp_scale = 3.0
+            hp_scale = enemy_progression.get("rare_hp_multiplier", 3.0)
         else:
             hp_scale = 1.0
+            
         base_hp    = 5
-        self.max_hp = int((base_hp + player_level * 2) * hp_scale)
+        hp_per_level = enemy_progression.get("hp_per_level", 2)
+        self.max_hp = int((base_hp + player_level * hp_per_level) * hp_scale)
         self.hp     = self.max_hp
 
-        # Vitesse
-        self.speed      = speed + player_level * 5
+        # NOUVEAU: Vitesse depuis balance.json
+        speed_per_level = enemy_progression.get("speed_per_level", 5)
+        self.speed      = speed + player_level * speed_per_level
         self.base_speed = self.speed
         self.slow_timer = 0.0
 
@@ -44,7 +52,7 @@ class Enemy:
         self.xp_value = {'normal':3.5,'rare':10,'elite':15}[tier]
         self.damage   = 1
 
-        # Timers d’attaque
+        # Timers d'attaque
         self.attack_cooldown = 1.0
         self.attack_timer    = 0.0
         self.pause_timer     = 0.0

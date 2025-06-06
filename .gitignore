@@ -13,5 +13,37 @@ venv/
 .vscode/
 .idea/
 
+# Build temporaires (mais garder les scripts)
+dist/
+build/
+*.spec
+version.txt
+
+# Tests et couverture
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Distribution temporaire (dossiers générés)
+DeathMustPygame_Portable/
+DeathMustPygame_EXE/
+*_Portable/
+*_EXE/
+
+# Fichiers temporaires
+antivirus_backup.txt
+*.tmp
+*.temp
+
+# Documentation temporaire générée
+DISTRIBUTION_PRETE.md
+CORRECTIONS_*.md
+
+# Fichiers de demo et debug temporaires
+demo_*.py
+debug_*.py
+
 # Autres
 .DS_Store
+*.log

@@ -1,0 +1,36 @@
+{
+  "audio": {
+    "master_volume": 0.505,
+    "music_volume": 0.105,
+    "sfx_volume": 0.5
+  },
+  "video": {
+    "resolution": [
+      1366,
+      768
+    ],
+    "fullscreen": false,
+    "vsync": true
+  },
+  "hud": {
+    "scale": 0.995,
+    "show_fps": false,
+    "show_timer": true
+  },
+  "keybinds": {
+    "move_up": 122,
+    "move_down": 115,
+    "move_left": 113,
+    "move_right": 100,
+    "dash": 32,
+    "attack": "mouse_left",
+    "scream": "mouse_right",
+    "pause": 27,
+    "balance_menu": 1073741882
+  },
+  "gameplay": {
+    "auto_pause_on_focus_loss": true,
+    "auto_pickup": true,
+    "show_damage_numbers": true
+  }
+}
