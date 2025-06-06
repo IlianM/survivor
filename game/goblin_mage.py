@@ -16,6 +16,10 @@ class GoblinMage:
         self.image = pygame.transform.scale(raw, (sw, sh))
         self.rect  = self.image.get_rect(center=(x, y))
 
+        # Coordonnées flottantes pour éviter les problèmes de troncature
+        self.float_x = float(self.rect.x)
+        self.float_y = float(self.rect.y)
+
         # — Stats & timers —
         self.base_speed       = 80
         self.slow_timer       = 0.0
@@ -68,18 +72,23 @@ class GoblinMage:
         move = self.base_speed * speed_factor * dt
 
         if dist > desired_max:
-            self.rect.x += nx * move
-            self.rect.y += ny * move
+            # Utiliser des coordonnées flottantes pour éviter les problèmes de troncature
+            self.float_x += nx * move
+            self.float_y += ny * move
         elif dist < desired_min:
-            self.rect.x -= nx * move
-            self.rect.y -= ny * move
+            self.float_x -= nx * move
+            self.float_y -= ny * move
         # sinon reste en place
 
-        # Clamp aux limites de la map
-        self.rect.x = max(0, min(self.rect.x, MAP_WIDTH  - self.rect.width))
-        self.rect.y = max(0, min(self.rect.y, MAP_HEIGHT - self.rect.height))
+        # Clamp les coordonnées flottantes directement (AVANT conversion entière)
+        self.float_x = max(0.0, min(self.float_x, float(MAP_WIDTH - self.rect.width)))
+        self.float_y = max(0.0, min(self.float_y, float(MAP_HEIGHT - self.rect.height)))
+        
+        # Mettre à jour rect avec les valeurs entières clampées
+        self.rect.x = int(self.float_x)
+        self.rect.y = int(self.float_y)
 
-        # 3) Tir si à l’écran et cooldown terminé
+        # 3) Tir si à l'écran et cooldown terminé
         on_screen = (
             -self.rect.width  < self.rect.x - cam_x < WIDTH and
             -self.rect.height < self.rect.y - cam_y < HEIGHT

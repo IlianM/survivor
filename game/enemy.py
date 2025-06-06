@@ -26,6 +26,10 @@ class Enemy:
         self.image     = self.img_right
         self.rect      = self.image.get_rect(center=(x, y))
 
+        # Coordonnées flottantes pour éviter les problèmes de troncature
+        self.float_x = float(self.rect.x)
+        self.float_y = float(self.rect.y)
+
         # NOUVEAU: HP scaling depuis balance.json
         scaling_config = balance.config.get("scaling", {})
         enemy_progression = scaling_config.get("enemy_progression", {})
@@ -73,18 +77,23 @@ class Enemy:
         # timers attaque/pause/flash
         if self.attack_timer > 0:
             self.attack_timer -= dt
-        if self.pause_timer > 0:
-            self.pause_timer -= dt
-            return
         if self.flash_timer > 0:
             self.flash_timer -= dt
 
-        # slow
+        # Facteur de pause + slow combinés
+        pause_factor = 1.0
+        if self.pause_timer > 0:
+            self.pause_timer -= dt
+            pause_factor = 0.2  # Ralenti à 20% au lieu d'arrêt complet
+        
         if self.slow_timer > 0:
             self.slow_timer -= dt
-            factor = 0.5
+            slow_factor = 0.5
         else:
-            factor = 1.0
+            slow_factor = 1.0
+        
+        # Facteur de vitesse combiné
+        factor = pause_factor * slow_factor
 
         # mouvement vers joueur
         dx = player_pos[0] - self.rect.centerx
@@ -93,12 +102,18 @@ class Enemy:
         if dist > 0:
             self.image = self.img_left if dx < 0 else self.img_right
             nx, ny = dx/dist, dy/dist
-            self.rect.x += nx * self.base_speed * factor * dt
-            self.rect.y += ny * self.base_speed * factor * dt
+            
+            # Utiliser des coordonnées flottantes pour éviter les problèmes de troncature
+            self.float_x += nx * self.base_speed * factor * dt
+            self.float_y += ny * self.base_speed * factor * dt
 
-        # clamp
-        self.rect.x = max(0, min(self.rect.x, MAP_WIDTH - self.rect.width))
-        self.rect.y = max(0, min(self.rect.y, MAP_HEIGHT - self.rect.height))
+        # Clamp les coordonnées flottantes directement (AVANT conversion entière)
+        self.float_x = max(0.0, min(self.float_x, float(MAP_WIDTH - self.rect.width)))
+        self.float_y = max(0.0, min(self.float_y, float(MAP_HEIGHT - self.rect.height)))
+        
+        # Mettre à jour rect avec les valeurs entières clampées
+        self.rect.x = int(self.float_x)
+        self.rect.y = int(self.float_y)
 
     def draw(self, surface, cam_x, cam_y):
         pos = (self.rect.x - cam_x, self.rect.y - cam_y)

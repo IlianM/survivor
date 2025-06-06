@@ -268,15 +268,10 @@ class SettingsMenu:
             title_x = self.menu_x + (self.menu_width - title.get_width()) // 2
             surface.blit(title, (title_x, self.menu_y + 15))
         
-        # Instructions
-        if self.font_small:
-            if self.waiting_for_key:
-                instruction = "Appuyez sur une touche ou ECHAP pour annuler"
-                color = (255, 255, 100)
-            else:
-                instruction = "ECHAP: Fermer | Molette: Defiler"
-                color = (200, 200, 200)
-            
+        # Instructions uniquement pour la configuration des touches
+        if self.font_small and self.waiting_for_key:
+            instruction = "Appuyez sur une touche ou ECHAP pour annuler"
+            color = (255, 255, 100)
             inst_surface = self.font_small.render(instruction, True, color)
             inst_x = self.menu_x + (self.menu_width - inst_surface.get_width()) // 2
             surface.blit(inst_surface, (inst_x, self.menu_y + 50))

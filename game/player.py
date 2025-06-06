@@ -10,6 +10,66 @@ from .audio_manager import audio_manager
 
 class Player:
     def __init__(self, x, y):
+        # — Configuration des stats depuis balance.json —
+        player_config = balance.config.get("player", {})
+        
+        self.speed       = player_config.get("speed", 150)
+        self.max_hp      = player_config.get("max_hp", 10)
+        self.hp          = self.max_hp
+        self.regen_rate  = player_config.get("regen_rate", 0.2)
+        
+        attack_config = player_config.get("attack", {})
+        self.attack_damage   = attack_config.get("damage", 3.0)
+        self.attack_range    = attack_config.get("range", 150)
+        self.attack_cooldown = attack_config.get("cooldown", 1.2)
+        self.attack_angle    = attack_config.get("angle", 90)
+        
+        dash_config = player_config.get("dash", {})
+        self.dash_speed     = dash_config.get("speed", 800)
+        self.dash_duration  = dash_config.get("duration", 0.2)
+        self.dash_cooldown  = dash_config.get("cooldown", 4.0)
+        
+        scream_config = player_config.get("scream", {})
+        self.scream_damage  = scream_config.get("damage", 4)
+        self.scream_range_multiplier = scream_config.get("range_multiplier", 3)
+        self.scream_slow_duration = scream_config.get("slow_duration", 3.0)
+        self.scream_cooldown = scream_config.get("cooldown", 7.0)
+
+        # Réglages internes
+        self.attack_timer = self.attack_cooldown
+        self.dash_timer   = 0.0
+        self.scream_timer = 0.0
+
+        # Variables dash
+        self.dash_time_left = 0.0
+        self.dash_dir       = (0, 0)
+
+        # Attaque visuelle
+        self.attacking           = False
+        self.attack_timer_visual = 0.0
+        self.attack_duration     = 0.2
+        self.last_attack_angle   = 0
+
+        # Cône de cri
+        self.show_scream_cone   = False
+        self.scream_cone_timer  = 0.0
+        self.scream_cone_duration = self.scream_slow_duration
+
+        # — Animation et direction —
+        self.direction = 'right'
+        self.anim_timer    = 0.0
+        self.anim_interval = 0.15
+        self.anim_index    = 0
+
+        # — Progression et niveaux —
+        self.level = 1
+        self.xp = 0.0
+        self.xp_required = 20.0
+
+        # — Bonus temporaires —
+        self.magnet_active = False
+        self.magnet_timer = 0.0
+        self.magnet_duration = 8.0
 
         if not pygame.display.get_init():
             pygame.display.init()
@@ -59,6 +119,10 @@ class Player:
         self.image = self.down_frames[0]
         self.rect  = self.image.get_rect(center=(x, y))
 
+        # Coordonnées flottantes pour éviter les problèmes de troncature
+        self.float_x = float(self.rect.x)
+        self.float_y = float(self.rect.y)
+
         # animation
         self.anim_index    = 0
         self.anim_timer    = 0.0
@@ -66,28 +130,6 @@ class Player:
         self.direction     = 'down'
         self.offset_up     = 20
         self.offset_down   = 15
-
-        # stats
-        self.speed   = balance.get_player_stats().get("speed", 150)
-        self.max_hp  = balance.get_player_stats().get("max_hp", 10)
-        self.hp      = self.max_hp
-        self.regen_rate = balance.get_player_stats().get("regen_rate", 0.2)
-
-        # attaque
-        self.attack_range        = balance.get_player_stats().get("attack_range", 150)
-        self.attack_cooldown     = balance.get_player_stats().get("attack_cooldown", 1.0)
-        self.attack_angle        = balance.get_player_stats().get("attack_angle", 90)
-        self.attack_timer        = 0.0
-        self.attack_damage       = balance.get_player_stats().get("attack_damage", 3)
-        self.attacking           = False
-        self.attack_duration     = 0.2
-        self.attack_timer_visual = 0.0
-        self.last_attack_angle   = 0
-
-        # slash visuel
-        raw = pygame.image.load(os.path.join("assets", "slash.png")).convert_alpha()
-        self.raw_slash   = raw
-        self.slash_scale = 0.15
 
         # XP & progression
         self.xp            = 0
@@ -100,27 +142,13 @@ class Player:
         # auto‐attack
         self.auto_attack = True
 
-        # dash
-        dash_stats = balance.get_player_stats().get("dash", {})
-        self.dash_cooldown  = dash_stats.get("cooldown", 4.0)
-        self.dash_timer     = 0.0
-        self.dash_duration  = dash_stats.get("duration", 0.2)
-        self.dash_time_left = 0.0
-        self.dash_speed     = dash_stats.get("speed", 800)
-        self.dash_dir       = (0, 0)
+        # slash visuel
+        raw = pygame.image.load(os.path.join("assets", "slash.png")).convert_alpha()
+        self.raw_slash   = raw
+        self.slash_scale = 0.15
 
-        # cri
-        scream_stats = balance.get_player_stats().get("scream", {})
-        self.scream_cooldown      = scream_stats.get("cooldown", 10.0)
-        self.scream_timer         = 0.0
-        self.scream_damage        = scream_stats.get("damage", 4)
-        self.scream_range         = self.attack_range * scream_stats.get("range_multiplier", 3)
-        self.scream_slow_duration = scream_stats.get("slow_duration", 3.0)
-        self.scream_slow_factor   = 0.6
-
-        self.scream_cone_duration = self.scream_slow_duration
-        self.scream_cone_timer    = 0.0
-        self.show_scream_cone     = False
+        # Calculer scream_range après que attack_range soit défini
+        self.scream_range = self.attack_range * self.scream_range_multiplier
 
         # Aimant
         self.magnet_active   = False
@@ -159,16 +187,20 @@ class Player:
         # 2) dash en cours
         if self.dash_time_left > 0:
             self.dash_time_left -= dt
-            # Calcul du déplacement en dash avec conversion entière
+            # Utiliser les coordonnées flottantes pour le dash aussi
             dash_move_x = self.dash_dir[0] * self.dash_speed * dt
             dash_move_y = self.dash_dir[1] * self.dash_speed * dt
             
-            self.rect.x = int(self.rect.x + dash_move_x)
-            self.rect.y = int(self.rect.y + dash_move_y)
+            self.float_x += dash_move_x
+            self.float_y += dash_move_y
             
-            # clamp X et Y
-            self.rect.x = max(0, min(self.rect.x, MAP_WIDTH  - self.rect.width))
-            self.rect.y = max(0, min(self.rect.y, MAP_HEIGHT - self.rect.height))
+            # Clamp les coordonnées flottantes directement pour le dash
+            self.float_x = max(0.0, min(self.float_x, float(MAP_WIDTH - self.rect.width)))
+            self.float_y = max(0.0, min(self.float_y, float(MAP_HEIGHT - self.rect.height)))
+            
+            # Mettre à jour rect avec les valeurs entières clampées
+            self.rect.x = int(self.float_x)
+            self.rect.y = int(self.float_y)
             return
 
         # 3) lecture des touches avec keybinds configurables
@@ -241,12 +273,21 @@ class Player:
         mag = math.hypot(dx, dy)
         if mag > 0:
             nx, ny = dx / mag, dy / mag
-            self.rect.x += nx * self.speed * dt
-            self.rect.y += ny * self.speed * dt
+            # Utiliser des coordonnées flottantes pour éviter les problèmes de troncature
+            if not hasattr(self, 'float_x'):
+                self.float_x = float(self.rect.x)
+                self.float_y = float(self.rect.y)
+            
+            self.float_x += nx * self.speed * dt
+            self.float_y += ny * self.speed * dt
 
-        # clamp X et Y dans la map
-        self.rect.x = max(0, min(self.rect.x, MAP_WIDTH  - self.rect.width))
-        self.rect.y = max(0, min(self.rect.y, MAP_HEIGHT - self.rect.height))
+        # Clamp les coordonnées flottantes directement (AVANT conversion entière)
+        self.float_x = max(0.0, min(self.float_x, float(MAP_WIDTH - self.rect.width)))
+        self.float_y = max(0.0, min(self.float_y, float(MAP_HEIGHT - self.rect.height)))
+        
+        # Mettre à jour rect avec les valeurs entières clampées
+        self.rect.x = int(self.float_x)
+        self.rect.y = int(self.float_y)
 
     def can_attack(self):
         return self.attack_timer >= self.attack_cooldown

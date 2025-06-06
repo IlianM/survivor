@@ -1,0 +1,58 @@
+{
+  "defaults": {
+    "colours": {
+      "normal_bg": "#3C3C46",
+      "hovered_bg": "#4A4A54",
+      "disabled_bg": "#2A2A32",
+      "selected_bg": "#4680FF",
+      "normal_text": "#FFFFFF",
+      "hovered_text": "#FFFFFF",
+      "selected_text": "#FFFFFF",
+      "disabled_text": "#808080",
+      "normal_border": "#4680FF",
+      "hovered_border": "#6A9BFF",
+      "disabled_border": "#404040"
+    },
+    "font": {
+      "name": "Arial",
+      "size": "14"
+    }
+  },
+  "#title_label": {
+    "font": {
+      "size": "18",
+      "bold": "1"
+    },
+    "colours": {
+      "normal_text": "#4680FF"
+    }
+  },
+  "#tab_button": {
+    "colours": {
+      "normal_bg": "#464650",
+      "hovered_bg": "#5A5A64",
+      "selected_bg": "#4680FF"
+    }
+  },
+  "#window": {
+    "colours": {
+      "normal_bg": "#32323C",
+      "normal_border": "#4680FF"
+    },
+    "misc": {
+      "border_width": "2",
+      "shadow_width": "4"
+    }
+  },
+  "#panel": {
+    "colours": {
+      "normal_bg": "#3C3C46"
+    }
+  },
+  "#slider": {
+    "colours": {
+      "normal_bg": "#2A2A32",
+      "selected_bg": "#4680FF"
+    }
+  }
+}
